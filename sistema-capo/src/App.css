@@ -385,3 +385,26 @@ body {
 .fade-in {
   animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+.btn-quick-filter {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-quick-filter:hover {
+  background: #f0f0f5;
+  color: var(--text-primary);
+}
+
+.btn-quick-filter.active {
+  background: var(--accent-color);
+  color: #fff;
+  border-color: var(--accent-color);
+}

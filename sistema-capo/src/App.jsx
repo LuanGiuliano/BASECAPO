@@ -17,7 +17,13 @@ import {
   Play,
   CornerDownRight,
   CircleUserRound,
-  AlertTriangle
+  AlertTriangle,
+  Building,
+  History,
+  Folder,
+  Edit3,
+  Table,
+  Info
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -54,8 +60,41 @@ function App() {
   const [filterAtivosStatus, setFilterAtivosStatus] = useState('Todos');
   const [selectedProcess, setSelectedProcess] = useState(null);
   const [selectedAnalyzer, setSelectedAnalyzer] = useState(null);
-  
-  const ITEMS_PER_PAGE = 20;
+  const [quickFilter, setQuickFilter] = useState('Limpos');
+  const [itemsPerPageProcessos, setItemsPerPageProcessos] = useState(20);
+  const [itemsPerPageAposentados, setItemsPerPageAposentados] = useState(20);
+  const [infoModalContent, setInfoModalContent] = useState(null);
+
+  const renderInfoModal = () => {
+    if (!infoModalContent) return null;
+    return (
+      <div className="modal-overlay" onClick={(e) => { e.stopPropagation(); setInfoModalContent(null); }} style={{zIndex: 3000}}>
+        <div className="modal-content fade-in" style={{width: 500, padding: 0}} onClick={e => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>{infoModalContent.title}</h2>
+            <button onClick={(e) => { e.stopPropagation(); setInfoModalContent(null); }}>×</button>
+          </div>
+          <div className="modal-body">
+            <p style={{fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5}}>{infoModalContent.description}</p>
+            {infoModalContent.legends && infoModalContent.legends.length > 0 && (
+              <div style={{marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px'}}>
+                <h3 style={{fontSize: '13px', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.5px'}}>Detalhes e Legendas</h3>
+                {infoModalContent.legends.map((leg, i) => (
+                  <div key={i} style={{display: 'flex', alignItems: 'flex-start', gap: '12px'}}>
+                    <div style={{width: 12, height: 12, borderRadius: 3, background: leg.color || 'var(--panel-border)', marginTop: 4, flexShrink: 0}}></div>
+                    <div>
+                      <div style={{fontSize: 14, fontWeight: 600, color: 'var(--text-primary)'}}>{leg.label}</div>
+                      {leg.desc && <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: 2}}>{leg.desc}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Process and clean data using the new standard fields
   const data = useMemo(() => {
@@ -140,24 +179,52 @@ function App() {
     const concluidos = filteredData.filter(d => concluidoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k)));
     const arquivados = filteredData.filter(d => arquivadoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k)));
     
-    const ativos = filteredData.filter(d => 
+    const ativosRaw = filteredData.filter(d => 
       !concluidoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k)) &&
       !arquivadoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k))
     );
-    
-    const cirurgicos = ativos.filter(d => {
+
+    const igepesList = [];
+    const retornosIgepesList = [];
+    const ativosLimpos = [];
+
+    ativosRaw.forEach(d => {
+      const local = String(d.LOCAL_PADRAO).toUpperCase();
+      
+      const isIgepes = local.includes('IGEPES') || local.includes('IGEPPS');
+      const isRetornoIgepes = String(d['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPES?']).toUpperCase() === 'SIM';
+
+      if (isRetornoIgepes) {
+        retornosIgepesList.push(d);
+        igepesList.push(d);
+      } else if (isIgepes) {
+        igepesList.push(d);
+      } else {
+        ativosLimpos.push(d);
+      }
+    });
+
+    const cirurgicos = ativosLimpos.filter(d => {
        const s = String(d.status_consolidado).toLowerCase();
+       const local = String(d.LOCAL_PADRAO).toUpperCase();
+       
        if (s.includes('pend') || s.includes('parado') || s.includes('atrasado') || s.includes('adequação')) return true;
        if (d.dias_parado > 30) return true;
        if (s === 'não informado' || s.includes('aguard')) return true; 
+       if (local.includes('DRE') || local.includes('URE')) return true; // DREs considered cirurgicos / pendencias
        return false;
     });
-    
+
     return {
-      totalAtivos: ativos.length,
+      totalAtivos: ativosLimpos.length,
       totalCirurgico: cirurgicos.length,
-      totalArquivados: arquivados.length + concluidos.length, // Unificamos Concluidos e Arquivados no mesmo card para melhor clareza
-      ativosList: ativos,
+      totalArquivados: arquivados.length + concluidos.length,
+      totalIgepes: igepesList.length,
+      totalRetornosIgepes: retornosIgepesList.length,
+      ativosList: ativosRaw,
+      ativosLimposList: ativosLimpos,
+      igepesList,
+      retornosIgepesList,
       concluidosList: [...concluidos, ...arquivados],
       arquivadosList: arquivados,
       cirurgicosList: cirurgicos
@@ -177,14 +244,14 @@ function App() {
 
   const setorData = useMemo(() => {
     const counts = {};
-    metrics.ativosList.forEach(d => {
+    metrics.ativosLimposList.forEach(d => {
       let setor = String(d.LOCAL_PADRAO).trim();
       if (!setor || setor === 'N/I' || setor === 'nan') setor = 'Outros/Não Informado';
       if (setor.length > 25) setor = setor.substring(0, 25) + '...';
       counts[setor] = (counts[setor] || 0) + 1;
     });
     return Object.keys(counts).map(k => ({ name: k, value: counts[k] })).sort((a,b) => b.value - a.value).slice(0, 10);
-  }, [metrics.ativosList]);
+  }, [metrics.ativosLimposList]);
 
   const produtividadeData = useMemo(() => {
     const counts = {};
@@ -215,17 +282,31 @@ function App() {
   }, [data]);
 
   const uniqueAtivosDre = useMemo(() => {
-    const dres = [...new Set(metrics.ativosList.map(d => String(d.LOCAL_PADRAO)))].filter(x => x !== 'N/I' && x !== 'nan').sort();
+    let baseList = metrics.ativosLimposList;
+    if (quickFilter === 'Todos') baseList = metrics.ativosList;
+    else if (quickFilter === 'IGEPES') baseList = metrics.igepesList;
+    else if (quickFilter === 'Retornos') baseList = metrics.retornosIgepesList;
+    
+    const dres = [...new Set(baseList.map(d => String(d.LOCAL_PADRAO)))].filter(x => x !== 'N/I' && x !== 'nan').sort();
     return ['Todos', ...dres];
-  }, [metrics.ativosList]);
+  }, [metrics, quickFilter]);
 
   const uniqueAtivosStatus = useMemo(() => {
-    const statuses = [...new Set(metrics.ativosList.map(d => String(d.status_consolidado)))].filter(x => x !== 'N/I' && x !== 'nan').sort();
+    let baseList = metrics.ativosLimposList;
+    if (quickFilter === 'Todos') baseList = metrics.ativosList;
+    else if (quickFilter === 'IGEPES') baseList = metrics.igepesList;
+    else if (quickFilter === 'Retornos') baseList = metrics.retornosIgepesList;
+
+    const statuses = [...new Set(baseList.map(d => String(d.status_consolidado)))].filter(x => x !== 'N/I' && x !== 'nan').sort();
     return ['Todos', ...statuses];
-  }, [metrics.ativosList]);
+  }, [metrics, quickFilter]);
 
   const processosAtivosSearch = useMemo(() => {
-    let result = metrics.ativosList;
+    let result = metrics.ativosLimposList;
+    if (quickFilter === 'Todos') result = metrics.ativosList;
+    else if (quickFilter === 'IGEPES') result = metrics.igepesList;
+    else if (quickFilter === 'Retornos') result = metrics.retornosIgepesList;
+
     if (filterAtivosDre !== 'Todos') {
       result = result.filter(d => String(d.LOCAL_PADRAO) === filterAtivosDre);
     }
@@ -244,10 +325,10 @@ function App() {
       );
     }
     return result;
-  }, [metrics.ativosList, metrics.cirurgicosList, searchAtivos, filterAtivosDre, filterAtivosStatus]);
+  }, [metrics, quickFilter, searchAtivos, filterAtivosDre, filterAtivosStatus]);
 
-  const totalPagesProcessos = Math.ceil(processosAtivosSearch.length / ITEMS_PER_PAGE);
-  const paginatedProcessos = processosAtivosSearch.slice((pageProcessos - 1) * ITEMS_PER_PAGE, pageProcessos * ITEMS_PER_PAGE);
+  const totalPagesProcessos = Math.ceil(processosAtivosSearch.length / itemsPerPageProcessos);
+  const paginatedProcessos = processosAtivosSearch.slice((pageProcessos - 1) * itemsPerPageProcessos, pageProcessos * itemsPerPageProcessos);
 
   const aposentadosSearch = useMemo(() => {
     if (!searchAposentados) return metrics.concluidosList;
@@ -258,8 +339,8 @@ function App() {
     );
   }, [metrics.concluidosList, searchAposentados]);
 
-  const totalPagesAposentados = Math.ceil(aposentadosSearch.length / ITEMS_PER_PAGE);
-  const paginatedAposentados = aposentadosSearch.slice((pageAposentados - 1) * ITEMS_PER_PAGE, pageAposentados * ITEMS_PER_PAGE);
+  const totalPagesAposentados = Math.ceil(aposentadosSearch.length / itemsPerPageAposentados);
+  const paginatedAposentados = aposentadosSearch.slice((pageAposentados - 1) * itemsPerPageAposentados, pageAposentados * itemsPerPageAposentados);
 
   const formatLabel = (key) => {
     const mappings = {
@@ -648,10 +729,20 @@ function App() {
         </div>
         
         <nav className="nav-menu">
+          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' }}>Indicadores Analíticos</div>
           <a href="#" className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}><LayoutDashboard size={20} /> Dashboard Geral</a>
           <a href="#" className={`nav-item ${activeTab === 'producao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('producao'); }}><TrendingUp size={20} /> Produção & Produtividade</a>
           <a href="#" className={`nav-item ${activeTab === 'processos' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('processos'); }}><FileText size={20} /> Processos Ativos</a>
           <a href="#" className={`nav-item ${activeTab === 'aposentados' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('aposentados'); }}><Archive size={20} /> Arquivados & Concluídos</a>
+          
+          <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
+          
+          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Ferramentas de Gestão</div>
+          <a href="#" className={`nav-item ${activeTab === 'registrar' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('registrar'); }}><Edit3 size={20} /> Registrar atividade</a>
+          <a href="#" className={`nav-item ${activeTab === 'planilhao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('planilhao'); }}><Table size={20} /> Planilhão painel gerencial</a>
+          
+          <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
+
           <a href="#" className={`nav-item ${activeTab === 'configuracoes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('configuracoes'); }}><Settings size={20} /> Configurações</a>
         </nav>
       </aside>
@@ -699,6 +790,7 @@ function App() {
                   className="glass-panel stat-card" 
                   style={{cursor: 'pointer'}} 
                   onClick={() => {
+                    setQuickFilter('Limpos');
                     setFilterAtivosDre('Todos');
                     setFilterAtivosStatus('Todos');
                     setSearchAtivos('');
@@ -709,8 +801,21 @@ function App() {
                   <div className="stat-icon blue"><FileText /></div>
                   <div className="stat-details">
                     <span className="stat-value">{metrics.totalAtivos.toLocaleString('pt-BR')}</span>
-                    <span className="stat-label">Total de Ativos</span>
-                    <span className="stat-description">Processos correntes em andamento.</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="stat-label">Ativos (CAPO)</span>
+                      <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoModalContent({
+                          title: 'Ativos (CAPO)',
+                          description: 'Este indicador mostra o total de processos que estão sob a responsabilidade e posse da CAPO no momento, aguardando andamento ou análise.',
+                          legends: [
+                            { color: 'var(--accent-color)', label: 'Inclui', desc: 'Processos com os analisadores, na recepção da CAPO ou em tramitação interna.' },
+                            { color: 'var(--danger-color)', label: 'Exclui', desc: 'Processos devolvidos às DREs, encaminhados ao IGEPES ou que já foram finalizados/arquivados.' }
+                          ]
+                        });
+                      }} />
+                    </div>
+                    <span className="stat-description">Processos correntes em andamento (Limpos).</span>
                   </div>
                 </div>
                 
@@ -718,6 +823,7 @@ function App() {
                   className="glass-panel stat-card" 
                   style={{cursor: 'pointer'}}
                   onClick={() => {
+                    setQuickFilter('Limpos');
                     setFilterAtivosDre('Todos');
                     setFilterAtivosStatus('__CIRURGICOS__');
                     setSearchAtivos('');
@@ -728,7 +834,21 @@ function App() {
                   <div className="stat-icon red"><AlertCircle /></div>
                   <div className="stat-details">
                     <span className="stat-value">{metrics.totalCirurgico.toLocaleString('pt-BR')}</span>
-                    <span className="stat-label">Volume Cirúrgico</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="stat-label">Volume Cirúrgico</span>
+                      <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoModalContent({
+                          title: 'Volume Cirúrgico',
+                          description: 'Agrupa todos os processos que exigem atenção imediata da gestão. São casos que estão com pendências crônicas ou inatividade prolongada.',
+                          legends: [
+                            { color: 'var(--warning-color)', label: 'Pendências e Atrasos', desc: 'Status contendo palavras como "pendente", "parado", "atrasado" ou "adequação".' },
+                            { color: 'var(--danger-color)', label: 'Inatividade', desc: 'Processos sem movimentação há mais de 30 dias.' },
+                            { color: 'var(--text-secondary)', label: 'Falta de Informação (NI/DRE)', desc: 'Processos sem status definido ou parados em DREs aguardando acerto administrativo.' }
+                          ]
+                        });
+                      }} />
+                    </div>
                     <span className="stat-description">Gargalos: Pendentes, inativos ou s/ análise.</span>
                   </div>
                 </div>
@@ -743,16 +863,84 @@ function App() {
                   <div className="stat-icon green"><Archive /></div>
                   <div className="stat-details">
                     <span className="stat-value">{metrics.totalArquivados.toLocaleString('pt-BR')}</span>
-                    <span className="stat-label">Finalizados / Arquivados</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="stat-label">Finalizados / Arquivados</span>
+                      <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoModalContent({
+                          title: 'Finalizados / Arquivados',
+                          description: 'Representa a totalidade de processos que já encerraram o seu ciclo de vida dentro da coordenação e não requerem mais ações.',
+                          legends: [
+                            { color: 'var(--success-color)', label: 'Concluídos e Publicados', desc: 'Processos que tiveram suas portarias publicadas no Diário Oficial.' },
+                            { color: '#86868b', label: 'Arquivados', desc: 'Processos baixados definitivamente.' }
+                          ]
+                        });
+                      }} />
+                    </div>
                     <span className="stat-description">Processos concluídos ou extintos.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', marginTop: '24px' }}>
+                <div 
+                  className="glass-panel stat-card" 
+                  style={{cursor: 'pointer', background: 'linear-gradient(145deg, rgba(88, 86, 214, 0.05) 0%, rgba(88, 86, 214, 0.02) 100%)', border: '1px solid rgba(88, 86, 214, 0.2)'}}
+                  onClick={() => {
+                    setQuickFilter('IGEPES');
+                    setFilterAtivosDre('Todos');
+                    setFilterAtivosStatus('Todos');
+                    setSearchAtivos('');
+                    setPageProcessos(1);
+                    setActiveTab('processos');
+                  }}
+                >
+                  <div className="stat-icon purple" style={{ background: 'rgba(88, 86, 214, 0.1)', color: 'rgb(88, 86, 214)' }}><Building /></div>
+                  <div className="stat-details">
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                      <span className="stat-value">{metrics.totalIgepes.toLocaleString('pt-BR')}</span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success-color)' }}>{metrics.totalRetornosIgepes} retornaram</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="stat-label" style={{ color: 'rgb(88, 86, 214)' }}>Monitoramento IGEPES</span>
+                      <Info size={14} color="rgb(88, 86, 214)" style={{cursor: 'pointer'}} onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoModalContent({
+                          title: 'Monitoramento IGEPES',
+                          description: 'Acompanhamento do lote de processos que foram enviados ao IGEPES (Órgão Previdenciário) para análise externa.',
+                          legends: [
+                            { color: '#af52de', label: 'Enviados IGEPES', desc: 'Processos que estão atualmente com o IGEPES.' },
+                            { color: 'var(--success-color)', label: 'Retornos', desc: 'Processos que já possuem a flag de retorno do IGEPES marcada no sistema.' }
+                          ]
+                        });
+                      }} />
+                    </div>
+                    <span className="stat-description">Processos encaminhados ao órgão estadual.</span>
                   </div>
                 </div>
               </div>
 
               <div className="charts-grid" style={{ gridTemplateColumns: '1fr' }}>
                 <div className="glass-panel">
-                  <div className="chart-header">Série Histórica (Linha do Tempo)</div>
-                  <div className="chart-description">Clique em um ano na linha do tempo para filtrar e visualizar os processos correspondentes.</div>
+                  <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Série Histórica Geral (Linha do Tempo)
+                    <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
+                      e.stopPropagation();
+                      setInfoModalContent({
+                        title: 'Série Histórica Geral',
+                        description: 'Visão cronológica de todo o passivo de processos registrados.',
+                        legends: [
+                          { color: 'var(--accent-color)', label: 'Eixo X (Anos)', desc: 'Ano de entrada do processo.' },
+                          { color: 'var(--text-primary)', label: 'Eixo Y (Volume)', desc: 'Soma total de todos os processos (ativos, concluídos, cirúrgicos, etc.) que entraram naquele ano.' },
+                          { color: 'var(--panel-border)', label: 'Interatividade', desc: 'Você pode clicar em um ano no gráfico para filtrar todo o painel.' }
+                        ]
+                      });
+                    }} />
+                  </div>
+                  <div className="chart-description">
+                    Este gráfico soma <strong>TODOS</strong> os processos registrados na base de dados agrupados por ano de entrada (incluindo ativos, concluídos, cirúrgicos, arquivados, etc). 
+                    Clique em um ano na linha do tempo para filtrar e visualizar os processos correspondentes.
+                  </div>
                   <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
                     <ResponsiveContainer>
                       <LineChart data={timelineData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }} onClick={handleTimelineClick} style={{cursor: 'pointer'}}>
@@ -769,7 +957,20 @@ function App() {
 
               <div className="charts-grid" style={{ gridTemplateColumns: '1fr' }}>
                 <div className="glass-panel">
-                  <div className="chart-header">Volume de Processos por Setor (DREs/CAPO)</div>
+                  <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Volume de Processos por Setor (DREs/CAPO)
+                    <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
+                      e.stopPropagation();
+                      setInfoModalContent({
+                        title: 'Volume de Processos por Setor',
+                        description: 'Este gráfico ilustra a distribuição física ou sistêmica atual de todos os processos ATIVOS da base (excluindo os já concluídos e arquivados).',
+                        legends: [
+                          { color: 'var(--accent-color)', label: 'Eixo Y (Setores)', desc: 'Nome da DRE, URE ou da própria CAPO.' },
+                          { color: 'var(--text-primary)', label: 'Eixo X (Quantidade)', desc: 'Número total de processos ativos alocados naquele setor.' }
+                        ]
+                      });
+                    }} />
+                  </div>
                   <div className="chart-description">Distribuição de processos ativos agrupados por sua localização física/sistema atual.</div>
                   <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
                     <ResponsiveContainer>
@@ -790,7 +991,21 @@ function App() {
           {activeTab === 'producao' && (
             <>
               <div className="glass-panel table-container">
-                <div className="chart-header">Lista Detalhada de Analisadores</div>
+                <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  Lista Detalhada de Analisadores
+                  <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
+                    e.stopPropagation();
+                    setInfoModalContent({
+                      title: 'Lista Detalhada de Analisadores',
+                      description: 'Métrica de produtividade individual por analisador na coordenação.',
+                      legends: [
+                        { color: 'var(--text-primary)', label: 'Total Distribuído', desc: 'Soma de todos os processos que em algum momento foram direcionados ou estão em posse do analisador.' },
+                        { color: 'var(--success-color)', label: 'Total Entregue', desc: 'Processos que o analisador finalizou (ex: status Concluído, Publicado ou Arquivado).' },
+                        { color: 'var(--success-color)', label: 'Taxa de Entrega', desc: 'O percentual de conclusão baseado na relação entre distribuídos e entregues.' }
+                      ]
+                    });
+                  }} />
+                </div>
                 <div className="chart-description">Clique sobre um analisador para abrir o seu histórico de processos e emitir o relatório em PDF.</div>
                 
                 <table className="data-table" style={{ marginTop: '16px' }}>
@@ -834,9 +1049,20 @@ function App() {
 
           {activeTab === 'processos' && (
             <div className="glass-panel table-container">
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px'}}>
-                <div className="chart-header" style={{marginBottom: 0}}>Processos Ativos</div>
-                <div style={{display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'flex-end'}}>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+                <div className="chart-header" style={{marginBottom: 0}}>
+                  Processos: {quickFilter === 'Limpos' ? 'Ativos CAPO' : quickFilter === 'IGEPES' ? 'Enviados IGEPES' : quickFilter === 'Retornos' ? 'Retornaram do IGEPES' : 'Todos'}
+                </div>
+                
+                <div className="quick-filters" style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                  <button className={`btn-quick-filter ${quickFilter === 'Limpos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Limpos'); setPageProcessos(1); }}>Ativos CAPO</button>
+                  <button className={`btn-quick-filter ${quickFilter === 'IGEPES' ? 'active' : ''}`} onClick={() => { setQuickFilter('IGEPES'); setPageProcessos(1); }}>Enviados IGEPES</button>
+                  <button className={`btn-quick-filter ${quickFilter === 'Retornos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Retornos'); setPageProcessos(1); }}>Retornos IGEPES</button>
+                  <button className={`btn-quick-filter ${quickFilter === 'Todos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Todos'); setPageProcessos(1); }}>Ver Todos</button>
+                </div>
+              </div>
+
+              <div style={{display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '24px'}}>
                   <select 
                     className="filter-select" 
                     value={filterAtivosDre} 
@@ -868,7 +1094,6 @@ function App() {
                     />
                   </div>
                 </div>
-              </div>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -918,20 +1143,37 @@ function App() {
                 </tbody>
               </table>
 
-              <div className="pagination">
-                <button 
-                  disabled={pageProcessos === 1} 
-                  onClick={() => setPageProcessos(p => p - 1)}
-                >
-                  Anterior
-                </button>
-                <span>Página {pageProcessos} de {totalPagesProcessos || 1}</span>
-                <button 
-                  disabled={pageProcessos >= totalPagesProcessos || totalPagesProcessos === 0} 
-                  onClick={() => setPageProcessos(p => p + 1)}
-                >
-                  Próxima
-                </button>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px'}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                  <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>Exibir:</span>
+                  <select 
+                    className="filter-select" 
+                    value={itemsPerPageProcessos}
+                    onChange={(e) => { setItemsPerPageProcessos(Number(e.target.value)); setPageProcessos(1); }}
+                    style={{padding: '4px 8px', fontSize: '13px', minWidth: '70px'}}
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                  <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>processos por página</span>
+                </div>
+                <div className="pagination" style={{marginTop: 0}}>
+                  <button 
+                    disabled={pageProcessos === 1} 
+                    onClick={() => setPageProcessos(p => p - 1)}
+                  >
+                    Anterior
+                  </button>
+                  <span>Página {pageProcessos} de {totalPagesProcessos || 1}</span>
+                  <button 
+                    disabled={pageProcessos >= totalPagesProcessos || totalPagesProcessos === 0} 
+                    onClick={() => setPageProcessos(p => p + 1)}
+                  >
+                    Próxima
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -981,32 +1223,64 @@ function App() {
                 </tbody>
               </table>
 
-              <div className="pagination">
-                <button 
-                  disabled={pageAposentados === 1} 
-                  onClick={() => setPageAposentados(p => p - 1)}
-                >
-                  Anterior
-                </button>
-                <span>Página {pageAposentados} de {totalPagesAposentados || 1}</span>
-                <button 
-                  disabled={pageAposentados >= totalPagesAposentados || totalPagesAposentados === 0} 
-                  onClick={() => setPageAposentados(p => p + 1)}
-                >
-                  Próxima
-                </button>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px'}}>
+                <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                  <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>Exibir:</span>
+                  <select 
+                    className="filter-select" 
+                    value={itemsPerPageAposentados}
+                    onChange={(e) => { setItemsPerPageAposentados(Number(e.target.value)); setPageAposentados(1); }}
+                    style={{padding: '4px 8px', fontSize: '13px', minWidth: '70px'}}
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                  <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>processos por página</span>
+                </div>
+                <div className="pagination" style={{marginTop: 0}}>
+                  <button 
+                    disabled={pageAposentados === 1} 
+                    onClick={() => setPageAposentados(p => p - 1)}
+                  >
+                    Anterior
+                  </button>
+                  <span>Página {pageAposentados} de {totalPagesAposentados || 1}</span>
+                  <button 
+                    disabled={pageAposentados >= totalPagesAposentados || totalPagesAposentados === 0} 
+                    onClick={() => setPageAposentados(p => p + 1)}
+                  >
+                    Próxima
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
+          {activeTab === 'registrar' && (
+            <div className="glass-panel fade-in">
+              <div className="chart-header">Registrar Atividade</div>
+              <p style={{ color: 'var(--text-secondary)' }}>Módulo de registro de atividades em desenvolvimento.</p>
+            </div>
+          )}
+
+          {activeTab === 'planilhao' && (
+            <div className="glass-panel fade-in">
+              <div className="chart-header">Planilhão Painel Gerencial</div>
+              <p style={{ color: 'var(--text-secondary)' }}>Módulo de painel gerencial em desenvolvimento.</p>
+            </div>
+          )}
+
           {activeTab === 'configuracoes' && (
-            <div className="glass-panel">
+            <div className="glass-panel fade-in">
               <div className="chart-header">Configurações Gerais</div>
               <p style={{ color: 'var(--text-secondary)' }}>Módulo de configurações em desenvolvimento.</p>
             </div>
           )}
         </div>
         {renderAnalyzerModal()}
+        {renderInfoModal()}
       </main>
     </div>
   );
