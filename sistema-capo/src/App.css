@@ -408,3 +408,35 @@ body {
   color: #fff;
   border-color: var(--accent-color);
 }
+
+@keyframes pulseGlow {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.pulse-anim {
+  animation: pulseGlow 1.5s infinite ease-in-out;
+}
+
+@keyframes fadeMessage {
+  0% { opacity: 0; transform: translateY(5px); }
+  10% { opacity: 1; transform: translateY(0); }
+  90% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-5px); }
+}
+
+.fade-message {
+  animation: fadeMessage 2.5s infinite;
+}
+
+@keyframes fadeInOutBg {
+  0% { opacity: 0; transform: rotate(-10deg) scale(0.95); }
+  20% { opacity: 0.03; transform: rotate(-10deg) scale(1); }
+  80% { opacity: 0.03; transform: rotate(-10deg) scale(1); }
+  100% { opacity: 0; transform: rotate(-10deg) scale(1.05); }
+}
+
+.fade-in-out-bg {
+  animation: fadeInOutBg 2.5s ease-in-out forwards;
+}

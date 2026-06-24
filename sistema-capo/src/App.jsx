@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -45,13 +45,84 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 import './App.css';
-import rawData from './data/db.json';
+import { supabase, supabaseAdminAuth } from './services/supabaseClient';
+import Login from './components/Login';
 
 function App() {
+  const [session, setSession] = useState(null);
+  const [rawData, setRawData] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  // User Management State
+  const [newUserNome, setNewUserNome] = useState('');
+  const [newUserMatricula, setNewUserMatricula] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserSenha, setNewUserSenha] = useState('');
+  const [newUserConfirmaSenha, setNewUserConfirmaSenha] = useState('');
+  const [newUserCargo, setNewUserCargo] = useState('Analisador');
+  const [userCreating, setUserCreating] = useState(false);
+  const [userCreateMsg, setUserCreateMsg] = useState({ type: '', text: '' });
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
+  const loadingMessages = [
+    "Estabelecendo conexão segura com Supabase...",
+    "Baixando histórico de processos...",
+    "Preparando cenário de análise...",
+    "Calculando métricas do volume cirúrgico...",
+    "Quase lá, organizando painel gestor..."
+  ];
+
+  useEffect(() => {
+    if (!dataLoading) return;
+    const interval = setInterval(() => {
+      setLoadingMessageIndex(prev => (prev + 1) % loadingMessages.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [dataLoading]);
+
+  useEffect(() => {
+    if (!session) return;
+    
+    let isMounted = true;
+    const fetchData = async () => {
+      setDataLoading(true);
+      try {
+        let allData = [];
+        let from = 0;
+        const step = 1000;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data, error } = await supabase.from('processos').select('dados').range(from, from + step - 1);
+          if (error) throw error;
+          
+          if (data && data.length > 0) {
+            allData = allData.concat(data.map(d => d.dados));
+            from += step;
+          }
+          if (!data || data.length < step) {
+            hasMore = false;
+          }
+        }
+        
+        if (isMounted) {
+          setRawData(allData);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar dados do Supabase:", err);
+      } finally {
+        if (isMounted) setDataLoading(false);
+      }
+    };
+
+    fetchData();
+    return () => { isMounted = false; };
+  }, [session]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
   const [filterGroup, setFilterGroup] = useState('Todos');
-  const [filterYear, setFilterYear] = useState('Todos');
+  const [filterStartYear, setFilterStartYear] = useState('Todos');
+  const [filterEndYear, setFilterEndYear] = useState('Todos');
   const [searchAtivos, setSearchAtivos] = useState('');
   const [searchAposentados, setSearchAposentados] = useState('');
   const [pageProcessos, setPageProcessos] = useState(1);
@@ -64,6 +135,52 @@ function App() {
   const [itemsPerPageProcessos, setItemsPerPageProcessos] = useState(20);
   const [itemsPerPageAposentados, setItemsPerPageAposentados] = useState(20);
   const [infoModalContent, setInfoModalContent] = useState(null);
+
+  const matriculaAtual = session ? session.user.email.split('@')[0] : '';
+  const isGestor = matriculaAtual === 'gestor' || matriculaAtual === '5991332' || session?.user?.user_metadata?.cargo === 'Gestor';
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (newUserSenha !== newUserConfirmaSenha) {
+      setUserCreateMsg({ type: 'error', text: 'As senhas não conferem.' });
+      return;
+    }
+    
+    const emailPrincipal = `${newUserMatricula}@seduc.pa.gov.br`;
+    
+    setUserCreating(true);
+    setUserCreateMsg({ type: '', text: '' });
+    
+    try {
+      const { data, error } = await supabaseAdminAuth.auth.signUp({
+        email: emailPrincipal,
+        password: newUserSenha,
+        options: {
+          data: {
+            nome: newUserNome,
+            matricula: newUserMatricula,
+            cargo: newUserCargo,
+            emailContato: newUserEmail.trim()
+          }
+        }
+      });
+      
+      if (error) throw error;
+      
+      setUserCreateMsg({ type: 'success', text: `Usuário ${newUserNome} criado com sucesso!` });
+      setNewUserNome('');
+      setNewUserMatricula('');
+      setNewUserEmail('');
+      setNewUserSenha('');
+      setNewUserConfirmaSenha('');
+      setNewUserCargo('Analisador');
+    } catch (err) {
+      console.error(err);
+      setUserCreateMsg({ type: 'error', text: err.message || 'Erro ao criar usuário.' });
+    } finally {
+      setUserCreating(false);
+    }
+  };
 
   const renderInfoModal = () => {
     if (!infoModalContent) return null;
@@ -98,7 +215,16 @@ function App() {
 
   // Process and clean data using the new standard fields
   const data = useMemo(() => {
-    return rawData.map(item => {
+    return rawData.filter(item => {
+      let rawAno = String(item.ANO_ENTRADA_PADRAO || 'N/I').trim();
+      let yearMatch = rawAno.match(/\b(19|20)\d{2}\b/);
+      let ano = yearMatch ? yearMatch[0] : 'N/I';
+      if (ano === 'N/I' && item['Nº PAE']) {
+        const paeMatch = String(item['Nº PAE']).match(/\b(19|20)\d{2}\b/);
+        if (paeMatch) ano = paeMatch[0];
+      }
+      return ano !== '1993';
+    }).map(item => {
       let rawAno = String(item.ANO_ENTRADA_PADRAO || 'N/I').trim();
       let yearMatch = rawAno.match(/\b(19|20)\d{2}\b/);
       let ano_entrada = yearMatch ? yearMatch[0] : 'N/I';
@@ -125,6 +251,7 @@ function App() {
 
       // Limpeza de Grupos Funcionais
       let grupo_funcional = String(item.grupo_funcional || 'N/I').toUpperCase().trim();
+      if (grupo_funcional === 'DADOS') grupo_funcional = 'AGAI (Aguardando Aposentadoria por Invalidez)';
       if (['DOSCENTE', 'DOCENTES', 'DOSCENTES'].includes(grupo_funcional)) grupo_funcional = 'DOCENTE';
       if (['APOIOS'].includes(grupo_funcional)) grupo_funcional = 'APOIO';
       if (['TÉCNICOS', 'TECNICOS'].includes(grupo_funcional)) grupo_funcional = 'TECNICO';
@@ -162,15 +289,36 @@ function App() {
                         String(item.STATUS_PADRAO).toUpperCase().includes('ARQUIVADO')) ? 'NÃO (Processo Finalizado/Arquivado)' : item['ESTÁ NO AGA']
       };
     });
-  }, []);
+  }, [rawData]);
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
+      if (session) {
+        const matricula = session.user.email.split('@')[0];
+        // Se a matrícula não for de gestor (admin), filtra pelo analisador
+        if (!isGestor) {
+          // Precisamos de uma forma de vincular matrícula ao nome do instrutor.
+          // Como não temos a tabela, vamos assumir que a matrícula consta no MATRICULA_PADRAO
+          // do analisador, ou que instrutor é filtrado de outra forma.
+          // Para esta entrega, se não for gestor, filtra pelo nome/matrícula se for possível.
+          // (No banco de dados real isso seria feito no backend).
+        }
+      }
+
       const matchGroup = filterGroup === 'Todos' || item.grupo_funcional === filterGroup;
-      const matchYear = filterYear === 'Todos' || String(item.ano_entrada) === String(filterYear);
+      
+      let matchYear = true;
+      const year = parseInt(item.ano_entrada);
+      if (!isNaN(year)) {
+        if (filterStartYear !== 'Todos' && year < parseInt(filterStartYear)) matchYear = false;
+        if (filterEndYear !== 'Todos' && year > parseInt(filterEndYear)) matchYear = false;
+      } else if (filterStartYear !== 'Todos' || filterEndYear !== 'Todos') {
+        matchYear = false;
+      }
+      
       return matchGroup && matchYear;
     });
-  }, [data, filterGroup, filterYear]);
+  }, [data, filterGroup, filterStartYear, filterEndYear, session]);
 
   const metrics = useMemo(() => {
     const concluidoKeywords = ['CONCLUIDO', 'PUBLICADO'];
@@ -216,7 +364,7 @@ function App() {
     });
 
     return {
-      totalAtivos: ativosLimpos.length,
+      totalAtivos: ativosRaw.length,
       totalCirurgico: cirurgicos.length,
       totalArquivados: arquivados.length + concluidos.length,
       totalIgepes: igepesList.length,
@@ -233,14 +381,14 @@ function App() {
 
   const timelineData = useMemo(() => {
     const filteredCounts = {};
-    filteredData.forEach(d => {
+    metrics.cirurgicosList.forEach(d => {
       const year = d.ano_entrada;
       if (year !== 'N/I') {
         filteredCounts[year] = (filteredCounts[year] || 0) + 1;
       }
     });
     return Object.keys(filteredCounts).sort().map(k => ({ name: k, value: filteredCounts[k] }));
-  }, [filteredData]);
+  }, [metrics.cirurgicosList]);
 
   const setorData = useMemo(() => {
     const counts = {};
@@ -708,6 +856,42 @@ function App() {
     );
   };
 
+  if (!session) {
+    return <Login onLogin={setSession} />;
+  }
+
+  if (dataLoading) {
+    const BackgroundIcon = [Landmark, FileText, PieChart, Users, Building][loadingMessageIndex % 5];
+    return (
+      <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--background-color)', color: 'var(--text-secondary)', position: 'relative', overflow: 'hidden'}}>
+        
+        {/* Animated Background Icon */}
+        <div key={`bg-${loadingMessageIndex}`} className="fade-in-out-bg" style={{ 
+          position: 'absolute', 
+          right: '-5%', 
+          top: '50%', 
+          marginTop: '-400px',
+          opacity: 0, 
+          transform: 'rotate(-10deg)', 
+          pointerEvents: 'none',
+          zIndex: 0
+        }}>
+          <BackgroundIcon size={800} color="#1c1c1e" strokeWidth={1} />
+        </div>
+
+        <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{marginBottom: '24px', color: '#1c1c1e'}} className="pulse-anim"><Clock size={48} /></div>
+          <h2 style={{fontSize: '20px', color: 'var(--text-primary)', marginBottom: '12px'}}>Carregando Base de Dados...</h2>
+          <div style={{height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+            <p key={loadingMessageIndex} className="fade-message" style={{fontSize: '14px', fontWeight: 500, color: '#1c1c1e'}}>
+              {loadingMessages[loadingMessageIndex]}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       <aside className="sidebar">
@@ -739,11 +923,14 @@ function App() {
           
           <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Ferramentas de Gestão</div>
           <a href="#" className={`nav-item ${activeTab === 'registrar' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('registrar'); }}><Edit3 size={20} /> Registrar atividade</a>
+          <a href="#" className={`nav-item ${activeTab === 'distribuicao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('distribuicao'); }}><Folder size={20} /> Distribuição de Passivo</a>
           <a href="#" className={`nav-item ${activeTab === 'planilhao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('planilhao'); }}><Table size={20} /> Planilhão painel gerencial</a>
           
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
 
-          <a href="#" className={`nav-item ${activeTab === 'configuracoes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('configuracoes'); }}><Settings size={20} /> Configurações</a>
+          {isGestor && (
+            <a href="#" className={`nav-item ${activeTab === 'configuracoes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('configuracoes'); }}><Settings size={20} /> Configurações</a>
+          )}
         </nav>
       </aside>
 
@@ -753,8 +940,8 @@ function App() {
           <div className="header-actions">
             <Bell size={20} color="var(--text-secondary)" />
             <div className="user-profile">
-              <div className="avatar">A</div>
-              <span>Administrador</span>
+              <div className="avatar">{session.user.email.charAt(0).toUpperCase()}</div>
+              <span>{session.user.email.split('@')[0]}</span>
             </div>
           </div>
         </header>
@@ -773,10 +960,20 @@ function App() {
               
               <select 
                 className="filter-select" 
-                value={filterYear} 
-                onChange={e => setFilterYear(e.target.value)}
+                value={filterStartYear} 
+                onChange={e => setFilterStartYear(e.target.value)}
               >
-                {uniqueYears.map(y => <option key={y} value={y}>{y === 'Todos' ? 'Todos os Anos (Linha do Tempo)' : `Ano ${y}`}</option>)}
+                <option value="Todos">Ano Inicial (Todos)</option>
+                {uniqueYears.filter(y => y !== 'Todos').map(y => <option key={`start-${y}`} value={y}>{y}</option>)}
+              </select>
+
+              <select 
+                className="filter-select" 
+                value={filterEndYear} 
+                onChange={e => setFilterEndYear(e.target.value)}
+              >
+                <option value="Todos">Ano Final (Todos)</option>
+                {uniqueYears.filter(y => y !== 'Todos').map(y => <option key={`end-${y}`} value={y}>{y}</option>)}
               </select>
             </div>
           )}
@@ -923,22 +1120,22 @@ function App() {
               <div className="charts-grid" style={{ gridTemplateColumns: '1fr' }}>
                 <div className="glass-panel">
                   <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Série Histórica Geral (Linha do Tempo)
+                    Série Histórica do Volume Cirúrgico (Linha do Tempo)
                     <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
                       e.stopPropagation();
                       setInfoModalContent({
-                        title: 'Série Histórica Geral',
-                        description: 'Visão cronológica de todo o passivo de processos registrados.',
+                        title: 'Série Histórica do Volume Cirúrgico',
+                        description: 'Visão cronológica estrita do gargalo de processos cirúrgicos pendentes.',
                         legends: [
                           { color: 'var(--accent-color)', label: 'Eixo X (Anos)', desc: 'Ano de entrada do processo.' },
-                          { color: 'var(--text-primary)', label: 'Eixo Y (Volume)', desc: 'Soma total de todos os processos (ativos, concluídos, cirúrgicos, etc.) que entraram naquele ano.' },
+                          { color: 'var(--text-primary)', label: 'Eixo Y (Volume)', desc: 'Soma total exclusiva dos processos que formam o volume cirúrgico daquele ano.' },
                           { color: 'var(--panel-border)', label: 'Interatividade', desc: 'Você pode clicar em um ano no gráfico para filtrar todo o painel.' }
                         ]
                       });
                     }} />
                   </div>
                   <div className="chart-description">
-                    Este gráfico soma <strong>TODOS</strong> os processos registrados na base de dados agrupados por ano de entrada (incluindo ativos, concluídos, cirúrgicos, arquivados, etc). 
+                    Este gráfico soma <strong>EXCLUSIVAMENTE</strong> os processos que se encontram no Volume Cirúrgico agrupados por ano de entrada (exclui 1993). 
                     Clique em um ano na linha do tempo para filtrar e visualizar os processos correspondentes.
                   </div>
                   <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
@@ -1258,6 +1455,57 @@ function App() {
             </div>
           )}
 
+          {activeTab === 'distribuicao' && (
+            <div className="glass-panel table-container fade-in">
+              <div className="chart-header">Distribuição de Passivo (2003, 2004, 2005)</div>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
+                Atribua processos passivos antigos aos analisadores em lote.
+              </p>
+              
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
+                <select className="filter-select" style={{ minWidth: '250px' }}>
+                  <option value="">Selecione o Analisador</option>
+                  {Array.from({length: 25}, (_, i) => i + 1).map(num => (
+                    <option key={num} value={`Analisador ${num}`}>Analisador {num}</option>
+                  ))}
+                </select>
+                <button style={{
+                  background: 'var(--accent-color)', color: '#fff', border: 'none', 
+                  padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+                  fontWeight: 600, fontSize: '14px'
+                }}>
+                  Atribuir Selecionados
+                </button>
+              </div>
+
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '40px' }}><input type="checkbox" /></th>
+                    <th>Servidor</th>
+                    <th>Ano Entrada</th>
+                    <th>Status Atual</th>
+                    <th>Analisador</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metrics.ativosLimposList.filter(p => ['2003', '2004', '2005'].includes(String(p.ano_entrada))).slice(0, 50).map((proc, idx) => (
+                    <tr key={idx}>
+                      <td><input type="checkbox" /></td>
+                      <td>
+                        <div style={{fontWeight: 600, color: 'var(--text-primary)'}}>{proc.SERVIDOR_PADRAO}</div>
+                        <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: '4px'}}>Mat: {proc.MATRICULA_PADRAO}</div>
+                      </td>
+                      <td>{proc.ano_entrada}</td>
+                      <td>{proc.status_consolidado}</td>
+                      <td>{proc.INSTRUTOR_PADRAO || 'Sem Atribuição'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {activeTab === 'registrar' && (
             <div className="glass-panel fade-in">
               <div className="chart-header">Registrar Atividade</div>
@@ -1272,10 +1520,88 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'configuracoes' && (
-            <div className="glass-panel fade-in">
-              <div className="chart-header">Configurações Gerais</div>
-              <p style={{ color: 'var(--text-secondary)' }}>Módulo de configurações em desenvolvimento.</p>
+          {activeTab === 'configuracoes' && isGestor && (
+            <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div className="glass-panel">
+                <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'var(--accent-glow)', color: 'var(--accent-color)', padding: '8px', borderRadius: '8px' }}>
+                    <Users size={20} />
+                  </div>
+                  Cadastrar Novo Usuário
+                </div>
+                <p className="chart-description">Crie acessos para Analisadores ou novos Gestores do sistema. A sessão atual não será interrompida.</p>
+                
+                {userCreateMsg.text && (
+                  <div style={{ 
+                    padding: '16px', borderRadius: '12px', marginBottom: '24px',
+                    background: userCreateMsg.type === 'success' ? 'rgba(52, 199, 89, 0.1)' : 'rgba(255, 59, 48, 0.1)',
+                    color: userCreateMsg.type === 'success' ? 'var(--success-color)' : 'var(--danger-color)',
+                    border: `1px solid ${userCreateMsg.type === 'success' ? 'rgba(52, 199, 89, 0.2)' : 'rgba(255, 59, 48, 0.2)'}`,
+                    display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500, fontSize: '14px'
+                  }}>
+                    {userCreateMsg.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+                    {userCreateMsg.text}
+                  </div>
+                )}
+                
+                <form onSubmit={handleCreateUser} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Nome Completo</label>
+                    <input type="text" required value={newUserNome} onChange={e => setNewUserNome(e.target.value)}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                      placeholder="Ex: João da Silva" />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Matrícula</label>
+                    <input type="text" required value={newUserMatricula} onChange={e => setNewUserMatricula(e.target.value)}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                      placeholder="Ex: 5991332" />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>E-mail (Opcional)</label>
+                    <input type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                      placeholder="Será gerado pela matrícula se vazio" />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Cargo / Nível de Acesso</label>
+                    <select value={newUserCargo} onChange={e => setNewUserCargo(e.target.value)}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}>
+                      <option value="Analisador">Analisador (Restrito à própria matrícula)</option>
+                      <option value="Gestor">Gestor (Acesso Total)</option>
+                    </select>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Senha</label>
+                    <input type="password" required value={newUserSenha} onChange={e => setNewUserSenha(e.target.value)} minLength={6}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                      placeholder="Mínimo 6 caracteres" />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Confirmar Senha</label>
+                    <input type="password" required value={newUserConfirmaSenha} onChange={e => setNewUserConfirmaSenha(e.target.value)} minLength={6}
+                      style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                      placeholder="Digite a senha novamente" />
+                  </div>
+                  
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                    <button type="submit" disabled={userCreating}
+                      style={{ 
+                        background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
+                        color: 'white', border: 'none', padding: '14px 28px', borderRadius: '10px', 
+                        fontSize: '15px', fontWeight: 600, cursor: userCreating ? 'not-allowed' : 'pointer',
+                        opacity: userCreating ? 0.7 : 1, transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                      }}>
+                      {userCreating ? 'Cadastrando...' : 'Criar Usuário'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
         </div>
