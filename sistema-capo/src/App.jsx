@@ -344,21 +344,13 @@ function App() {
       
       let matchDate = true;
       if (filterStartYear || filterEndYear) {
-        let processYear = null;
-        if (item.movDateValid) {
-          processYear = item.movDateValid.getFullYear();
-        } else {
-           const year = parseInt(item.ano_entrada);
-           if (!isNaN(year)) {
-              processYear = year;
-           }
-        }
+        let processYear = parseInt(item.ano_entrada);
         
-        if (processYear !== null) {
+        if (!isNaN(processYear)) {
           if (filterStartYear && processYear < parseInt(filterStartYear)) matchDate = false;
           if (filterEndYear && processYear > parseInt(filterEndYear)) matchDate = false;
         } else {
-          matchDate = false; // No valid year to compare
+          matchDate = false; // Sem ano válido não exibe no filtro numérico
         }
       }
       
@@ -413,11 +405,13 @@ function App() {
     const baseParaCirurgico = [...ativosCapo, ...ativosNasDres];
     
     const cirurgicos = baseParaCirurgico.filter(d => {
-       const instrutor = String(d.INSTRUTOR_PADRAO || 'N/I').toUpperCase().trim();
+       const s = String(d.status_consolidado).toLowerCase();
+       const local = String(d.LOCAL_PADRAO).toUpperCase();
        
-       if (d.dias_parado > 180 && (instrutor === 'N/I' || instrutor === '' || instrutor === 'NAN')) {
-         return true;
-       }
+       if (s.includes('pend') || s.includes('parado') || s.includes('atrasado') || s.includes('adequação')) return true;
+       if (s === 'não informado' || s.includes('aguard')) return true; 
+       if (local.includes('dre') || local.includes('ure')) return true; 
+       if (d.dias_parado > 30) return true; // Inatividade também é gargalo
        
        return false;
     });
@@ -1138,7 +1132,7 @@ function App() {
                     description: 'O sistema utiliza regras específicas para classificar o momento de cada processo:',
                     legends: [
                       { color: 'var(--accent-color)', label: 'Ativos (Em andamento)', desc: 'Processos em trâmite normal. Inclui todo processo que não esteja concluído nem arquivado.' },
-                      { color: 'var(--warning-color)', label: 'Volume Cirúrgico', desc: 'Subconjunto dos Ativos. Mostra APENAS processos parados há mais de 6 meses (180 dias) e sem analista.' },
+                      { color: 'var(--warning-color)', label: 'Volume Cirúrgico', desc: 'Subconjunto crítico. Reúne processos com qualquer tipo de pendência, atraso, adequação ou inativos por mais de 30 dias.' },
                       { color: 'var(--success-color)', label: 'Arquivados & Concluídos', desc: 'Processos finalizados (publicados, cancelados, extintos). Eles NUNCA se misturam com os Ativos.' }
                     ]
                   });
@@ -1206,14 +1200,14 @@ function App() {
                         e.stopPropagation();
                         setInfoModalContent({
                           title: 'Volume Cirúrgico',
-                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro dos Ativos, destacando os processos críticos.',
+                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro dos Ativos (CAPO e DREs), destacando os processos com problemas.',
                           legends: [
-                            { color: 'var(--warning-color)', label: 'Subconjunto', desc: 'Filtra os ativos para mostrar processos que estão há mais de 6 meses (180 dias) parados E que não foram analisados por ninguém.' }
+                            { color: 'var(--warning-color)', label: 'Subconjunto', desc: 'Filtra ativos para exibir qualquer tipo de pendência, adequação, falta de informação ou processos inativos há mais de 30 dias.' }
                           ]
                         });
                       }} />
                     </div>
-                    <span className="stat-description">Gargalos (&gt;6m parados s/ analista).</span>
+                    <span className="stat-description">Gargalos (Com pendência ou &gt;30d parados).</span>
                   </div>
                 </div>
 
