@@ -42,11 +42,39 @@ import {
 } from 'recharts';
 
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 import './App.css';
 import { supabase, supabaseAdminAuth } from './services/supabaseClient';
 import Login from './components/Login';
+
+const ACTIVE_ANALYZERS = [
+  { name: "ANA LUIZA LIMA DOS SANTOS", matricula: "5890679-1" },
+  { name: "ELIELSON ANDRADE PINHEIRO", matricula: "5896651-1" },
+  { name: "LICIA DE NAZARÉ COHEN DOS PASSOS", matricula: "941450-1" },
+  { name: "LUCIDEIA LIRA DE OLIVEIRA", matricula: "5167027-2" },
+  { name: "SÔNIA DO SOCORRO FIGUEIREDO NASCIMENTO", matricula: "6013287-1" },
+  { name: "VANESSA ALCÂNTARA CARDOSO MENDES", matricula: "57194853-2" },
+  { name: "AMERICA PINHEIRO DOS SANTOS", matricula: "671908-1" },
+  { name: "ALDENILZA PROGENIO PANTOJA BAIA", matricula: "5900515-1" },
+  { name: "DELMA LÚCIA RODRIGUES MOURA", matricula: "54191108-2" },
+  { name: "DENISE DOS SANTOS DE SOUZA", matricula: "5791570-2" },
+  { name: "IDAMÍLIA DOS SANTOS", matricula: "5187389-1" },
+  { name: "JERACINA OLIVEIRA DA SILVA", matricula: "732818-1" },
+  { name: "LOURENÇO SANCHES DE MATOS JUNIOR", matricula: "5791316-2" },
+  { name: "MARIA FERNANDA MARTINS DE SOUSA", matricula: "5188903-1" },
+  { name: "SILVIO FERREIRA RIBEIRO JUNIOR", matricula: "5891279-1" },
+  { name: "VICTOR MATEUS DINIZ PEREIRA", matricula: "57212515-1" },
+  { name: "ANTONIO LUIZ LEAL MOREIRA", matricula: "5791430-2" },
+  { name: "ANDRÉ PEREIRA CHAVES", matricula: "57210656-1" },
+  { name: "DAFNE DA SILVA RODRIGUES", matricula: "55587100-2" },
+  { name: "JOE RODRIGUES RIBEIRO", matricula: "5721130-2" },
+  { name: "FLAVIO JOSÉ PIMENTEL PENNA", matricula: "3252248-2" },
+  { name: "JOÃO JÚNIOR", matricula: "" },
+  { name: "MARIA HELENA LOPES DE OLIVEIRA", matricula: "452858-1" },
+  { name: "MARIA DO ROSÁRIO MONTEIRO SILVA", matricula: "57210664-1" },
+  { name: "PAULO ANDRÉ COSTA RIBEIRO", matricula: "5890602-1" }
+];
 
 function App() {
   const [session, setSession] = useState(null);
@@ -121,8 +149,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
   const [filterGroup, setFilterGroup] = useState('Todos');
-  const [filterStartYear, setFilterStartYear] = useState('Todos');
-  const [filterEndYear, setFilterEndYear] = useState('Todos');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
   const [searchAtivos, setSearchAtivos] = useState('');
   const [searchAposentados, setSearchAposentados] = useState('');
   const [pageProcessos, setPageProcessos] = useState(1);
@@ -223,7 +251,10 @@ function App() {
         const paeMatch = String(item['Nº PAE']).match(/\b(19|20)\d{2}\b/);
         if (paeMatch) ano = paeMatch[0];
       }
-      return ano !== '1993';
+      if (ano === '1993' || String(item.ANO_ENTRADA_PADRAO).includes('1993') || String(item['Nº PAE']).includes('1993')) {
+         return false;
+      }
+      return true;
     }).map(item => {
       let rawAno = String(item.ANO_ENTRADA_PADRAO || 'N/I').trim();
       let yearMatch = rawAno.match(/\b(19|20)\d{2}\b/);
@@ -251,7 +282,7 @@ function App() {
 
       // Limpeza de Grupos Funcionais
       let grupo_funcional = String(item.grupo_funcional || 'N/I').toUpperCase().trim();
-      if (grupo_funcional === 'DADOS') grupo_funcional = 'AGAI (Aguardando Aposentadoria por Invalidez)';
+      if (grupo_funcional === 'DADOS') grupo_funcional = 'AGA. POR INVALIDEZ';
       if (['DOSCENTE', 'DOCENTES', 'DOSCENTES'].includes(grupo_funcional)) grupo_funcional = 'DOCENTE';
       if (['APOIOS'].includes(grupo_funcional)) grupo_funcional = 'APOIO';
       if (['TÉCNICOS', 'TECNICOS'].includes(grupo_funcional)) grupo_funcional = 'TECNICO';
@@ -266,9 +297,11 @@ function App() {
       }
 
       let dias_parado = 0;
+      let movDateValid = null;
       if (item['Ultima movimentação'] && item['Ultima movimentação'] !== 'nan' && item['Ultima movimentação'] !== 'N/I') {
          const movDate = new Date(item['Ultima movimentação']);
          if (!isNaN(movDate.getTime())) {
+            movDateValid = movDate;
             const now = new Date('2026-06-22T13:58:32-03:00');
             const diffTime = now - movDate;
             if (diffTime > 0) {
@@ -284,6 +317,7 @@ function App() {
         grupo_funcional,
         ano_entrada,
         dias_parado,
+        movDateValid,
         'ESTÁ NO AGA': (String(item.STATUS_PADRAO).toUpperCase().includes('CONCLUIDO') || 
                         String(item.STATUS_PADRAO).toUpperCase().includes('PUBLICADO') || 
                         String(item.STATUS_PADRAO).toUpperCase().includes('ARQUIVADO')) ? 'NÃO (Processo Finalizado/Arquivado)' : item['ESTÁ NO AGA']
@@ -307,26 +341,50 @@ function App() {
 
       const matchGroup = filterGroup === 'Todos' || item.grupo_funcional === filterGroup;
       
-      let matchYear = true;
-      const year = parseInt(item.ano_entrada);
-      if (!isNaN(year)) {
-        if (filterStartYear !== 'Todos' && year < parseInt(filterStartYear)) matchYear = false;
-        if (filterEndYear !== 'Todos' && year > parseInt(filterEndYear)) matchYear = false;
-      } else if (filterStartYear !== 'Todos' || filterEndYear !== 'Todos') {
-        matchYear = false;
+      let matchDate = true;
+      if (filterStartDate || filterEndDate) {
+        let processDate = null;
+        if (item.movDateValid) {
+          processDate = item.movDateValid;
+        } else {
+           const year = parseInt(item.ano_entrada);
+           if (!isNaN(year)) {
+              processDate = new Date(year, 0, 1);
+           }
+        }
+        
+        if (processDate) {
+          if (filterStartDate) {
+            const start = new Date(filterStartDate);
+            // Corrige fuso horário para bater com o input date
+            start.setMinutes(start.getMinutes() + start.getTimezoneOffset());
+            start.setHours(0, 0, 0, 0);
+            if (processDate < start) matchDate = false;
+          }
+          if (filterEndDate) {
+            const end = new Date(filterEndDate);
+            end.setMinutes(end.getMinutes() + end.getTimezoneOffset());
+            end.setHours(23, 59, 59, 999);
+            if (processDate > end) matchDate = false;
+          }
+        } else {
+          matchDate = false; // No valid date to compare
+        }
       }
       
-      return matchGroup && matchYear;
+      return matchGroup && matchDate;
     });
-  }, [data, filterGroup, filterStartYear, filterEndYear, session]);
+  }, [data, filterGroup, filterStartDate, filterEndDate, session]);
 
   const metrics = useMemo(() => {
+    // 1. Definição de Arquivados e Concluídos
     const concluidoKeywords = ['CONCLUIDO', 'PUBLICADO'];
     const arquivadoKeywords = ['ARQUIVADO'];
     
     const concluidos = filteredData.filter(d => concluidoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k)));
     const arquivados = filteredData.filter(d => arquivadoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k)));
     
+    // 2. Base de Ativos (Todos os processos que não estão concluídos ou arquivados)
     const ativosRaw = filteredData.filter(d => 
       !concluidoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k)) &&
       !arquivadoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k))
@@ -334,48 +392,67 @@ function App() {
 
     const igepesList = [];
     const retornosIgepesList = [];
-    const ativosLimpos = [];
+    const ativosCapo = []; // Ativos que estão estritamente na CAPO
+    const ativosNasDres = []; // Ativos que estão nas DREs/UREs
 
     ativosRaw.forEach(d => {
       const local = String(d.LOCAL_PADRAO).toUpperCase();
       
       const isIgepes = local.includes('IGEPES') || local.includes('IGEPPS');
       const isRetornoIgepes = String(d['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPES?']).toUpperCase() === 'SIM';
+      const isDre = local.includes('DRE') || local.includes('URE');
 
       if (isRetornoIgepes) {
         retornosIgepesList.push(d);
-        igepesList.push(d);
+        // Se retornou do IGEPES, está novamente em posse da CAPO
+        ativosCapo.push(d);
       } else if (isIgepes) {
+        // Se está no IGEPES e não retornou
         igepesList.push(d);
+      } else if (isDre) {
+        // Processos devolvidos às DREs/UREs para acerto
+        ativosNasDres.push(d);
       } else {
-        ativosLimpos.push(d);
+        // Processos normais em andamento na CAPO
+        ativosCapo.push(d);
       }
     });
 
-    const cirurgicos = ativosLimpos.filter(d => {
+    // 3. Volume Cirúrgico (Gargalos: DREs, Parados, Pendências, Adequação)
+    // A base para o cirúrgico são os ativos na CAPO + DREs (pois a responsabilidade é gerenciar essas pendências). Exclui IGEPES.
+    const baseParaCirurgico = [...ativosCapo, ...ativosNasDres];
+    
+    const cirurgicos = baseParaCirurgico.filter(d => {
        const s = String(d.status_consolidado).toLowerCase();
        const local = String(d.LOCAL_PADRAO).toUpperCase();
        
+       // Regra 1: Palavras-chave de problema
        if (s.includes('pend') || s.includes('parado') || s.includes('atrasado') || s.includes('adequação')) return true;
+       // Regra 2: Tempo de Inatividade (mais de 30 dias sem movimentação)
        if (d.dias_parado > 30) return true;
+       // Regra 3: Sem análise iniciada ou aguardando
        if (s === 'não informado' || s.includes('aguard')) return true; 
-       if (local.includes('DRE') || local.includes('URE')) return true; // DREs considered cirurgicos / pendencias
+       // Regra 4: Encontra-se nas DREs/UREs (precisa de resgate/cobrança)
+       if (local.includes('DRE') || local.includes('URE')) return true; 
+       
        return false;
     });
 
     return {
-      totalAtivos: ativosRaw.length,
+      totalAtivosBruto: ativosRaw.length,
+      totalAtivosCapo: ativosCapo.length,
       totalCirurgico: cirurgicos.length,
       totalArquivados: arquivados.length + concluidos.length,
       totalIgepes: igepesList.length,
       totalRetornosIgepes: retornosIgepesList.length,
       ativosList: ativosRaw,
-      ativosLimposList: ativosLimpos,
+      ativosLimposList: ativosCapo,
       igepesList,
       retornosIgepesList,
       concluidosList: [...concluidos, ...arquivados],
       arquivadosList: arquivados,
-      cirurgicosList: cirurgicos
+      cirurgicosList: cirurgicos,
+      ativosNasDresList: ativosNasDres
     };
   }, [filteredData]);
 
@@ -392,28 +469,62 @@ function App() {
 
   const setorData = useMemo(() => {
     const counts = {};
-    metrics.ativosLimposList.forEach(d => {
+    const baseList = [...metrics.ativosLimposList, ...metrics.ativosNasDresList];
+    baseList.forEach(d => {
       let setor = String(d.LOCAL_PADRAO).trim();
-      if (!setor || setor === 'N/I' || setor === 'nan') setor = 'Outros/Não Informado';
+      
+      // Remover "Não Informado" do gráfico conforme solicitado
+      if (!setor || setor === 'N/I' || setor === 'nan' || setor.toLowerCase() === 'não informado') {
+        return; // Pula os sem informação de local
+      }
+      
+      // Agrupar CAPO para unificar a visualização da Sede
+      if (setor.toLowerCase().includes('capo') || setor.toLowerCase().includes('sira')) {
+         setor = 'Coordenação CAPO';
+      }
+
       if (setor.length > 25) setor = setor.substring(0, 25) + '...';
       counts[setor] = (counts[setor] || 0) + 1;
     });
     return Object.keys(counts).map(k => ({ name: k, value: counts[k] })).sort((a,b) => b.value - a.value).slice(0, 10);
-  }, [metrics.ativosLimposList]);
+  }, [metrics.ativosLimposList, metrics.ativosNasDresList]);
 
   const produtividadeData = useMemo(() => {
     const counts = {};
+    
+    // Inicializar os analisadores ativos para que todos apareçam, mesmo com 0 processos
+    ACTIVE_ANALYZERS.forEach(a => {
+      counts[a.name] = { name: a.name, Distribuidos: 0, Entregues: 0 };
+    });
+
     filteredData.forEach(d => {
-      let instrutor = String(d.INSTRUTOR_PADRAO).trim();
-      if (!instrutor || instrutor === 'N/I' || instrutor === 'nan') return; 
+      let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
+      if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return; 
       
-      if (!counts[instrutor]) counts[instrutor] = { name: instrutor, Entregues: 0, Distribuidos: 0 };
+      // Encontrar correspondência na lista de ativos
+      let activeMatch = ACTIVE_ANALYZERS.find(a => {
+        if (a.matricula) {
+          const baseMat = a.matricula.split(/[-/]/)[0];
+          if (instrutor.includes(baseMat)) return true;
+        }
+        
+        const uA = a.name.toUpperCase();
+        if (uA === instrutor) return true;
+        
+        // Verifica se o nome antes do traço/matrícula é igual ao primeiro nome ou contém
+        let justName = instrutor.split('-')[0].trim();
+        if (justName.length > 3 && (uA.includes(justName) || justName.includes(uA))) return true;
+        
+        return false;
+      });
       
-      counts[instrutor].Distribuidos += 1;
+      if (!activeMatch) return; // Excluir analisadores que não estão mais na CAPO
+      
+      counts[activeMatch.name].Distribuidos += 1;
       
       const s = String(d.status_consolidado).toUpperCase();
       if (s.includes('CONCLUIDO') || s.includes('PUBLICADO') || s.includes('ARQUIVADO')) {
-        counts[instrutor].Entregues += 1;
+        counts[activeMatch.name].Entregues += 1;
       }
     });
     return Object.values(counts).sort((a,b) => b.Distribuidos - a.Distribuidos);
@@ -546,7 +657,8 @@ function App() {
 
   const handleTimelineClick = (data) => {
     if (data && data.activeLabel) {
-      setFilterYear(data.activeLabel);
+      setFilterStartDate(`${data.activeLabel}-01-01`);
+      setFilterEndDate(`${data.activeLabel}-12-31`);
       setActiveTab('processos');
       setPageProcessos(1);
     }
@@ -688,7 +800,25 @@ function App() {
   const renderAnalyzerModal = () => {
     if (!selectedAnalyzer) return null;
     
-    const analyzerProcesses = filteredData.filter(d => d.INSTRUTOR_PADRAO === selectedAnalyzer);
+    const analyzerInfo = ACTIVE_ANALYZERS.find(a => a.name === selectedAnalyzer);
+    
+    const analyzerProcesses = filteredData.filter(d => {
+      let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
+      if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return false; 
+      
+      if (analyzerInfo && analyzerInfo.matricula) {
+        const baseMat = analyzerInfo.matricula.split(/[-/]/)[0];
+        if (instrutor.includes(baseMat)) return true;
+      }
+      
+      const uA = selectedAnalyzer.toUpperCase();
+      if (uA === instrutor) return true;
+      
+      let justName = instrutor.split('-')[0].trim();
+      if (justName.length > 3 && (uA.includes(justName) || justName.includes(uA))) return true;
+      
+      return false;
+    });
     
     const entregues = analyzerProcesses.filter(d => {
       const s = String(d.status_consolidado).toUpperCase();
@@ -724,7 +854,7 @@ function App() {
         tableRows.push(procData);
       });
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: 55,
         head: [tableColumn],
         body: tableRows,
@@ -936,12 +1066,21 @@ function App() {
 
       <main className="main-content">
         <header className="header">
-          <div className="header-title">Visão Geral dos Processos SEDUC</div>
+          <div className="header-title">VISÃO GERAL DE PROCESSOS - CAPO</div>
           <div className="header-actions">
             <Bell size={20} color="var(--text-secondary)" />
             <div className="user-profile">
-              <div className="avatar">{session.user.email.charAt(0).toUpperCase()}</div>
-              <span>{session.user.email.split('@')[0]}</span>
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent-color)', 
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                fontWeight: 600, fontSize: '14px'
+              }}>
+                {(session?.user?.user_metadata?.nome || session?.user?.email || 'U')[0].toUpperCase()}
+              </div>
+              <div className="user-info" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span className="user-name" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{session?.user?.user_metadata?.nome || session?.user?.email || 'Usuário'}</span>
+                <span className="user-role" style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{session?.user?.user_metadata?.cargo || 'Analisador'}</span>
+              </div>
             </div>
           </div>
         </header>
@@ -949,7 +1088,7 @@ function App() {
         <div className="dashboard-container fade-in" key={activeTab}>
           
           {(activeTab === 'dashboard' || activeTab === 'producao' || activeTab === 'processos' || activeTab === 'aposentados') && activeTab !== 'processoDetalhe' && (
-            <div className="filter-bar" style={{ display: (activeTab === 'dashboard' || activeTab === 'producao') ? 'flex' : 'none' }}>
+            <div className="filter-bar" style={{ display: (activeTab === 'dashboard' || activeTab === 'producao') ? 'flex' : 'none', gap: '16px', alignItems: 'center' }}>
               <select 
                 className="filter-select" 
                 value={filterGroup} 
@@ -958,23 +1097,27 @@ function App() {
                 {uniqueGroups.map(g => <option key={g} value={g}>{g === 'Todos' ? 'Todos os Grupos' : g}</option>)}
               </select>
               
-              <select 
-                className="filter-select" 
-                value={filterStartYear} 
-                onChange={e => setFilterStartYear(e.target.value)}
-              >
-                <option value="Todos">Ano Inicial (Todos)</option>
-                {uniqueYears.filter(y => y !== 'Todos').map(y => <option key={`start-${y}`} value={y}>{y}</option>)}
-              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600}}>Data Inicial:</span>
+                <input 
+                  type="date" 
+                  className="filter-select" 
+                  value={filterStartDate} 
+                  onChange={e => setFilterStartDate(e.target.value)}
+                  style={{ minWidth: '150px' }}
+                />
+              </div>
 
-              <select 
-                className="filter-select" 
-                value={filterEndYear} 
-                onChange={e => setFilterEndYear(e.target.value)}
-              >
-                <option value="Todos">Ano Final (Todos)</option>
-                {uniqueYears.filter(y => y !== 'Todos').map(y => <option key={`end-${y}`} value={y}>{y}</option>)}
-              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600}}>Data Final:</span>
+                <input 
+                  type="date" 
+                  className="filter-select" 
+                  value={filterEndDate} 
+                  onChange={e => setFilterEndDate(e.target.value)}
+                  style={{ minWidth: '150px' }}
+                />
+              </div>
             </div>
           )}
 
@@ -997,7 +1140,7 @@ function App() {
                 >
                   <div className="stat-icon blue"><FileText /></div>
                   <div className="stat-details">
-                    <span className="stat-value">{metrics.totalAtivos.toLocaleString('pt-BR')}</span>
+                    <span className="stat-value">{metrics.totalAtivosCapo.toLocaleString('pt-BR')}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span className="stat-label">Ativos (CAPO)</span>
                       <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
@@ -1145,7 +1288,7 @@ function App() {
                         <XAxis dataKey="name" stroke="#86868b" fontSize={13} tickMargin={10} />
                         <YAxis stroke="#86868b" fontSize={13} tickMargin={10} />
                         <Tooltip cursor={{stroke: 'rgba(0,0,0,0.05)', strokeWidth: 2}} contentStyle={{ borderRadius: '12px', border: '1px solid #e5e5ea', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', fontFamily: 'var(--font-main)' }} />
-                        <Line type="monotone" dataKey="value" stroke="var(--accent-color)" strokeWidth={3} activeDot={{ r: 8, fill: '#fff', stroke: 'var(--accent-color)', strokeWidth: 2 }} />
+                        <Line type="monotone" dataKey="value" stroke="var(--danger-color)" strokeWidth={3} activeDot={{ r: 8, fill: '#fff', stroke: 'var(--danger-color)', strokeWidth: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -1465,8 +1608,8 @@ function App() {
               <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
                 <select className="filter-select" style={{ minWidth: '250px' }}>
                   <option value="">Selecione o Analisador</option>
-                  {Array.from({length: 25}, (_, i) => i + 1).map(num => (
-                    <option key={num} value={`Analisador ${num}`}>Analisador {num}</option>
+                  {ACTIVE_ANALYZERS.map(a => (
+                    <option key={a.name} value={a.name}>{a.name}</option>
                   ))}
                 </select>
                 <button style={{
