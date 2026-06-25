@@ -400,9 +400,9 @@ function App() {
       }
     });
 
-    // 3. Volume Cirúrgico (Gargalos: Parados, Pendências, Adequação)
-    // A base para o cirúrgico são APENAS os ativos na CAPO. Isso garante que o Cirúrgico seja matematicamente um subconjunto de Ativos (CAPO).
-    const baseParaCirurgico = [...ativosCapo];
+    // 3. Volume Cirúrgico (Gargalos: DREs, Parados, Pendências, Adequação)
+    // A base para o cirúrgico são os ativos na CAPO + DREs.
+    const baseParaCirurgico = [...ativosCapo, ...ativosNasDres];
     
     const cirurgicos = baseParaCirurgico.filter(d => {
        const s = String(d.status_consolidado).toLowerCase();
@@ -1158,7 +1158,7 @@ function App() {
                   className="glass-panel stat-card" 
                   style={{cursor: 'pointer'}} 
                   onClick={() => {
-                    setQuickFilter('Limpos');
+                    setQuickFilter('Todos');
                     setFilterAtivosDre('Todos');
                     setFilterAtivosStatus('Todos');
                     setSearchAtivos('');
@@ -1168,22 +1168,22 @@ function App() {
                 >
                   <div className="stat-icon blue"><FileText /></div>
                   <div className="stat-details">
-                    <span className="stat-value">{metrics.totalAtivosCapo.toLocaleString('pt-BR')}</span>
+                    <span className="stat-value">{metrics.totalAtivosBruto.toLocaleString('pt-BR')}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span className="stat-label">Ativos (CAPO)</span>
+                      <span className="stat-label">Total de Ativos</span>
                       <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
                         e.stopPropagation();
                         setInfoModalContent({
-                          title: 'Ativos (CAPO)',
-                          description: 'Este indicador mostra TODOS os processos que estão sob a responsabilidade da CAPO no momento. Atenção: Este número já engloba todo o Volume Cirúrgico (os problemáticos) e os processos normais em andamento.',
+                          title: 'Total de Ativos (Geral)',
+                          description: 'Este indicador mostra a totalidade de processos ativos no sistema (que não estão concluídos nem arquivados).',
                           legends: [
-                            { color: 'var(--accent-color)', label: 'Inclui', desc: 'Processos normais em andamento + processos com pendências/atrasos (Volume Cirúrgico).' },
-                            { color: 'var(--danger-color)', label: 'Exclui', desc: 'Processos Finalizados/Arquivados, processos no IGEPES e processos devolvidos para as DREs.' }
+                            { color: 'var(--accent-color)', label: 'Inclui', desc: 'Processos na CAPO, processos devolvidos para as DREs e processos no IGEPES.' },
+                            { color: 'var(--danger-color)', label: 'Exclui', desc: 'Apenas Processos Finalizados ou Arquivados.' }
                           ]
                         });
                       }} />
                     </div>
-                    <span className="stat-description">Total de processos na CAPO (Inclui o Cirúrgico).</span>
+                    <span className="stat-description">Todos os processos em andamento (CAPO, DRE e IGEPES).</span>
                   </div>
                 </div>
                 
@@ -1208,7 +1208,7 @@ function App() {
                         e.stopPropagation();
                         setInfoModalContent({
                           title: 'Volume Cirúrgico',
-                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro dos Ativos (CAPO), destacando os processos com problemas.',
+                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro do Total de Ativos, destacando os processos com problemas que estão na CAPO ou DREs.',
                           legends: [
                             { color: 'var(--warning-color)', label: 'Subconjunto', desc: 'Filtra ativos para exibir qualquer tipo de pendência, adequação, falta de informação ou processos inativos há mais de 30 dias.' }
                           ]
