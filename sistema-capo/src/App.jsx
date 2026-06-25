@@ -1131,6 +1131,18 @@ function App() {
                     <option key={year} value={year}>{year}</option>
                   ))}
                 </select>
+                <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer', marginLeft: '8px'}} onClick={(e) => {
+                  e.stopPropagation();
+                  setInfoModalContent({
+                    title: 'Como os indicadores são calculados?',
+                    description: 'O sistema utiliza regras específicas para classificar o momento de cada processo:',
+                    legends: [
+                      { color: 'var(--accent-color)', label: 'Ativos (Em andamento)', desc: 'Processos em trâmite normal. Inclui todo processo que não esteja concluído nem arquivado.' },
+                      { color: 'var(--warning-color)', label: 'Volume Cirúrgico', desc: 'Subconjunto dos Ativos. Mostra APENAS processos parados há mais de 6 meses (180 dias) e sem analista.' },
+                      { color: 'var(--success-color)', label: 'Arquivados & Concluídos', desc: 'Processos finalizados (publicados, cancelados, extintos). Eles NUNCA se misturam com os Ativos.' }
+                    ]
+                  });
+                }} />
               </div>
             </div>
           )}
