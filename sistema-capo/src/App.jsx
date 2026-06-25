@@ -436,14 +436,22 @@ function App() {
 
   const timelineData = useMemo(() => {
     const filteredCounts = {};
+    // Pré-preenche com todos os anos existentes (inclusive 2003) com valor 0
+    filteredData.forEach(d => {
+      const year = d.ano_entrada;
+      if (year && year !== 'N/I' && year !== 'nan') {
+        filteredCounts[year] = 0;
+      }
+    });
+
     metrics.cirurgicosList.forEach(d => {
       const year = d.ano_entrada;
-      if (year !== 'N/I') {
+      if (year && year !== 'N/I' && year !== 'nan') {
         filteredCounts[year] = (filteredCounts[year] || 0) + 1;
       }
     });
     return Object.keys(filteredCounts).sort().map(k => ({ name: k, value: filteredCounts[k] }));
-  }, [metrics.cirurgicosList]);
+  }, [metrics.cirurgicosList, filteredData]);
 
   const setorData = useMemo(() => {
     const counts = {};
