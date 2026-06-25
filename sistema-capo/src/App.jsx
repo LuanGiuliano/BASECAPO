@@ -400,9 +400,9 @@ function App() {
       }
     });
 
-    // 3. Volume Cirúrgico (Gargalos: DREs, Parados, Pendências, Adequação)
-    // A base para o cirúrgico são os ativos na CAPO + DREs (pois a responsabilidade é gerenciar essas pendências). Exclui IGEPES.
-    const baseParaCirurgico = [...ativosCapo, ...ativosNasDres];
+    // 3. Volume Cirúrgico (Gargalos: Parados, Pendências, Adequação)
+    // A base para o cirúrgico são APENAS os ativos na CAPO. Isso garante que o Cirúrgico seja matematicamente um subconjunto de Ativos (CAPO).
+    const baseParaCirurgico = [...ativosCapo];
     
     const cirurgicos = baseParaCirurgico.filter(d => {
        const s = String(d.status_consolidado).toLowerCase();
@@ -1208,7 +1208,7 @@ function App() {
                         e.stopPropagation();
                         setInfoModalContent({
                           title: 'Volume Cirúrgico',
-                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro dos Ativos (CAPO e DREs), destacando os processos com problemas.',
+                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro dos Ativos (CAPO), destacando os processos com problemas.',
                           legends: [
                             { color: 'var(--warning-color)', label: 'Subconjunto', desc: 'Filtra ativos para exibir qualquer tipo de pendência, adequação, falta de informação ou processos inativos há mais de 30 dias.' }
                           ]
