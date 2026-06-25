@@ -23,7 +23,8 @@ import {
   Folder,
   Edit3,
   Table,
-  Info
+  Info,
+  Database
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -149,8 +150,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
   const [filterGroup, setFilterGroup] = useState('Todos');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterStartYear, setFilterStartYear] = useState('');
+  const [filterEndYear, setFilterEndYear] = useState('');
   const [searchAtivos, setSearchAtivos] = useState('');
   const [searchAposentados, setSearchAposentados] = useState('');
   const [pageProcessos, setPageProcessos] = useState(1);
@@ -342,39 +343,28 @@ function App() {
       const matchGroup = filterGroup === 'Todos' || item.grupo_funcional === filterGroup;
       
       let matchDate = true;
-      if (filterStartDate || filterEndDate) {
-        let processDate = null;
+      if (filterStartYear || filterEndYear) {
+        let processYear = null;
         if (item.movDateValid) {
-          processDate = item.movDateValid;
+          processYear = item.movDateValid.getFullYear();
         } else {
            const year = parseInt(item.ano_entrada);
            if (!isNaN(year)) {
-              processDate = new Date(year, 0, 1);
+              processYear = year;
            }
         }
         
-        if (processDate) {
-          if (filterStartDate) {
-            const start = new Date(filterStartDate);
-            // Corrige fuso horário para bater com o input date
-            start.setMinutes(start.getMinutes() + start.getTimezoneOffset());
-            start.setHours(0, 0, 0, 0);
-            if (processDate < start) matchDate = false;
-          }
-          if (filterEndDate) {
-            const end = new Date(filterEndDate);
-            end.setMinutes(end.getMinutes() + end.getTimezoneOffset());
-            end.setHours(23, 59, 59, 999);
-            if (processDate > end) matchDate = false;
-          }
+        if (processYear !== null) {
+          if (filterStartYear && processYear < parseInt(filterStartYear)) matchDate = false;
+          if (filterEndYear && processYear > parseInt(filterEndYear)) matchDate = false;
         } else {
-          matchDate = false; // No valid date to compare
+          matchDate = false; // No valid year to compare
         }
       }
       
       return matchGroup && matchDate;
     });
-  }, [data, filterGroup, filterStartDate, filterEndDate, session]);
+  }, [data, filterGroup, filterStartYear, filterEndYear, session]);
 
   const metrics = useMemo(() => {
     // 1. Definição de Arquivados e Concluídos
@@ -423,17 +413,11 @@ function App() {
     const baseParaCirurgico = [...ativosCapo, ...ativosNasDres];
     
     const cirurgicos = baseParaCirurgico.filter(d => {
-       const s = String(d.status_consolidado).toLowerCase();
-       const local = String(d.LOCAL_PADRAO).toUpperCase();
+       const instrutor = String(d.INSTRUTOR_PADRAO || 'N/I').toUpperCase().trim();
        
-       // Regra 1: Palavras-chave de problema
-       if (s.includes('pend') || s.includes('parado') || s.includes('atrasado') || s.includes('adequação')) return true;
-       // Regra 2: Tempo de Inatividade (mais de 30 dias sem movimentação)
-       if (d.dias_parado > 30) return true;
-       // Regra 3: Sem análise iniciada ou aguardando
-       if (s === 'não informado' || s.includes('aguard')) return true; 
-       // Regra 4: Encontra-se nas DREs/UREs (precisa de resgate/cobrança)
-       if (local.includes('DRE') || local.includes('URE')) return true; 
+       if (d.dias_parado > 180 && (instrutor === 'N/I' || instrutor === '' || instrutor === 'NAN')) {
+         return true;
+       }
        
        return false;
     });
@@ -538,6 +522,13 @@ function App() {
   const uniqueGroups = useMemo(() => {
     const groups = [...new Set(data.map(d => d.grupo_funcional))].filter(Boolean).sort();
     return ['Todos', ...groups];
+  }, [data]);
+
+  const availableYears = useMemo(() => {
+    const years = [...new Set(data.map(d => String(d.ano_entrada)))]
+      .filter(y => y !== 'N/I' && y !== 'nan' && y !== '1993' && y !== 'undefined' && y.trim() !== '')
+      .sort((a, b) => parseInt(a) - parseInt(b));
+    return years;
   }, [data]);
 
   const uniqueAtivosDre = useMemo(() => {
@@ -657,8 +648,8 @@ function App() {
 
   const handleTimelineClick = (data) => {
     if (data && data.activeLabel) {
-      setFilterStartDate(`${data.activeLabel}-01-01`);
-      setFilterEndDate(`${data.activeLabel}-12-31`);
+      setFilterStartYear(String(data.activeLabel));
+      setFilterEndYear(String(data.activeLabel));
       setActiveTab('processos');
       setPageProcessos(1);
     }
@@ -991,12 +982,13 @@ function App() {
   }
 
   if (dataLoading) {
-    const BackgroundIcon = [Landmark, FileText, PieChart, Users, Building][loadingMessageIndex % 5];
+    const BackgroundIconRight = [Landmark, FileText, PieChart, Users, Building][loadingMessageIndex % 5];
+    const BackgroundIconLeft = [FileText, PieChart, Users, Building, Landmark][loadingMessageIndex % 5];
     return (
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--background-color)', color: 'var(--text-secondary)', position: 'relative', overflow: 'hidden'}}>
         
-        {/* Animated Background Icon */}
-        <div key={`bg-${loadingMessageIndex}`} className="fade-in-out-bg" style={{ 
+        {/* Animated Background Icon Right */}
+        <div key={`bg-r-${loadingMessageIndex}`} className="fade-in-out-bg" style={{ 
           position: 'absolute', 
           right: '-5%', 
           top: '50%', 
@@ -1006,7 +998,21 @@ function App() {
           pointerEvents: 'none',
           zIndex: 0
         }}>
-          <BackgroundIcon size={800} color="#1c1c1e" strokeWidth={1} />
+          <BackgroundIconRight size={800} color="#1c1c1e" strokeWidth={1} />
+        </div>
+
+        {/* Animated Background Icon Left */}
+        <div key={`bg-l-${loadingMessageIndex}`} className="fade-in-out-bg" style={{ 
+          position: 'absolute', 
+          left: '-5%', 
+          top: '50%', 
+          marginTop: '-400px',
+          opacity: 0, 
+          transform: 'rotate(10deg)', 
+          pointerEvents: 'none',
+          zIndex: 0
+        }}>
+          <BackgroundIconLeft size={800} color="#1c1c1e" strokeWidth={1} />
         </div>
 
         <div style={{ zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -1098,25 +1104,33 @@ function App() {
               </select>
               
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600}}>Data Inicial:</span>
-                <input 
-                  type="date" 
+                <span style={{fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600}}>Ano Inicial:</span>
+                <select 
                   className="filter-select" 
-                  value={filterStartDate} 
-                  onChange={e => setFilterStartDate(e.target.value)}
+                  value={filterStartYear} 
+                  onChange={e => setFilterStartYear(e.target.value)}
                   style={{ minWidth: '150px' }}
-                />
+                >
+                  <option value="">Selecione</option>
+                  {availableYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600}}>Data Final:</span>
-                <input 
-                  type="date" 
+                <span style={{fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 600}}>Ano Final:</span>
+                <select 
                   className="filter-select" 
-                  value={filterEndDate} 
-                  onChange={e => setFilterEndDate(e.target.value)}
+                  value={filterEndYear} 
+                  onChange={e => setFilterEndYear(e.target.value)}
                   style={{ minWidth: '150px' }}
-                />
+                >
+                  <option value="">Selecione</option>
+                  {availableYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
               </div>
             </div>
           )}
@@ -1147,15 +1161,15 @@ function App() {
                         e.stopPropagation();
                         setInfoModalContent({
                           title: 'Ativos (CAPO)',
-                          description: 'Este indicador mostra o total de processos que estão sob a responsabilidade e posse da CAPO no momento, aguardando andamento ou análise.',
+                          description: 'Este indicador mostra TODOS os processos que estão sob a responsabilidade da CAPO no momento. Atenção: Este número já engloba todo o Volume Cirúrgico (os problemáticos) e os processos normais em andamento.',
                           legends: [
-                            { color: 'var(--accent-color)', label: 'Inclui', desc: 'Processos com os analisadores, na recepção da CAPO ou em tramitação interna.' },
-                            { color: 'var(--danger-color)', label: 'Exclui', desc: 'Processos devolvidos às DREs, encaminhados ao IGEPES ou que já foram finalizados/arquivados.' }
+                            { color: 'var(--accent-color)', label: 'Inclui', desc: 'Processos normais em andamento + processos com pendências/atrasos (Volume Cirúrgico).' },
+                            { color: 'var(--danger-color)', label: 'Exclui', desc: 'Processos Finalizados/Arquivados, processos no IGEPES e processos devolvidos para as DREs.' }
                           ]
                         });
                       }} />
                     </div>
-                    <span className="stat-description">Processos correntes em andamento (Limpos).</span>
+                    <span className="stat-description">Total de processos na CAPO (Inclui o Cirúrgico).</span>
                   </div>
                 </div>
                 
@@ -1180,16 +1194,14 @@ function App() {
                         e.stopPropagation();
                         setInfoModalContent({
                           title: 'Volume Cirúrgico',
-                          description: 'Agrupa todos os processos que exigem atenção imediata da gestão. São casos que estão com pendências crônicas ou inatividade prolongada.',
+                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro dos Ativos, destacando os processos críticos.',
                           legends: [
-                            { color: 'var(--warning-color)', label: 'Pendências e Atrasos', desc: 'Status contendo palavras como "pendente", "parado", "atrasado" ou "adequação".' },
-                            { color: 'var(--danger-color)', label: 'Inatividade', desc: 'Processos sem movimentação há mais de 30 dias.' },
-                            { color: 'var(--text-secondary)', label: 'Falta de Informação (NI/DRE)', desc: 'Processos sem status definido ou parados em DREs aguardando acerto administrativo.' }
+                            { color: 'var(--warning-color)', label: 'Subconjunto', desc: 'Filtra os ativos para mostrar processos que estão há mais de 6 meses (180 dias) parados E que não foram analisados por ninguém.' }
                           ]
                         });
                       }} />
                     </div>
-                    <span className="stat-description">Gargalos: Pendentes, inativos ou s/ análise.</span>
+                    <span className="stat-description">Gargalos (&gt;6m parados s/ analista).</span>
                   </div>
                 </div>
 
@@ -1539,7 +1551,8 @@ function App() {
                     <th>Servidor</th>
                     <th>Grupo</th>
                     <th>Cargo</th>
-                    <th>Ano Nascimento</th>
+                    <th>Ano Entrada</th>
+                    <th>Data Conclusão</th>
                     <th>Status Final</th>
                   </tr>
                 </thead>
@@ -1553,6 +1566,7 @@ function App() {
                       <td>{proc.grupo_funcional}</td>
                       <td>{proc.CARGO_PADRAO}</td>
                       <td>{proc.ano_entrada}</td>
+                      <td>{proc.DATA_PUB_PADRAO && proc.DATA_PUB_PADRAO !== 'nan' ? proc.DATA_PUB_PADRAO : 'N/I'}</td>
                       <td>
                         <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
                           <span className="status-badge concluido">{proc.status_consolidado}</span>
