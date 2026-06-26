@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { seducLogo, siraLogo, brasaoGreyLogo } from './pdfLogos';
 import { 
   LayoutDashboard, 
   Users, 
@@ -158,9 +159,17 @@ function App() {
   const [pageAposentados, setPageAposentados] = useState(1);
   const [filterAtivosDre, setFilterAtivosDre] = useState('Todos');
   const [filterAtivosStatus, setFilterAtivosStatus] = useState('Todos');
+  const [filterAposentadosStartYear, setFilterAposentadosStartYear] = useState('');
+  const [filterAposentadosEndYear, setFilterAposentadosEndYear] = useState('');
   const [selectedProcess, setSelectedProcess] = useState(null);
   const [selectedAnalyzer, setSelectedAnalyzer] = useState(null);
   const [quickFilter, setQuickFilter] = useState('Limpos');
+  const [distGrupo, setDistGrupo] = useState('Todos');
+  const [distStartYear, setDistStartYear] = useState('');
+  const [distEndYear, setDistEndYear] = useState('');
+  const [assignedProcesses, setAssignedProcesses] = useState({});
+  const [distSelectedProcesses, setDistSelectedProcesses] = useState([]);
+  const [distAnalyzerSelect, setDistAnalyzerSelect] = useState('');
   const [itemsPerPageProcessos, setItemsPerPageProcessos] = useState(20);
   const [itemsPerPageAposentados, setItemsPerPageAposentados] = useState(20);
   const [infoModalContent, setInfoModalContent] = useState(null);
@@ -246,27 +255,55 @@ function App() {
   const data = useMemo(() => {
     return rawData.filter(item => {
       let rawAno = String(item.ANO_ENTRADA_PADRAO || 'N/I').trim();
-      let yearMatch = rawAno.match(/\b(19|20)\d{2}\b/);
-      let ano = yearMatch ? yearMatch[0] : 'N/I';
-      if (ano === 'N/I' && item['Nº PAE']) {
-        const paeMatch = String(item['Nº PAE']).match(/\b(19|20)\d{2}\b/);
-        if (paeMatch) ano = paeMatch[0];
+      let yearMatches = rawAno.match(/\b(200[3-9]|201[0-9]|202[0-6])\b/g);
+      let ano = yearMatches ? yearMatches[yearMatches.length - 1] : 'N/I';
+      
+      const fallbackFields = ['Nº PAE', '  Nº PROCESSO PAE', 'PROTOCOLO N°PAE', 'PAE', 'APOSENTADORIA', 'DATA ENTRADA NO AGA', 'DATA DA TRAMITAÇÃO', 'Carimbo de data/hora', 'DATA_PUB_PADRAO', 'DATA', 'DTINI_MNEMONICO', 'DATA DA SAÍDA'];
+      if (ano === 'N/I') {
+        for (let field of fallbackFields) {
+          if (item[field]) {
+            let matches = String(item[field]).match(/\b(200[3-9]|201[0-9]|202[0-6])\b/g);
+            if (matches) {
+              ano = matches[matches.length - 1];
+              break;
+            }
+          }
+        }
       }
       if (ano === '1993' || String(item.ANO_ENTRADA_PADRAO).includes('1993') || String(item['Nº PAE']).includes('1993')) {
          return false;
       }
+      const anoInt = parseInt(ano);
+      if (!isNaN(anoInt) && anoInt < 2003) {
+         return false; // Processos mais antigos que 2003 não devem aparecer no Volume Cirúrgico
+      }
+      const statusCheck = String(item.STATUS_PADRAO || '').toUpperCase();
+      if (statusCheck.includes('APOSENTADO')) {
+         return false; // Ignorar processos já aposentados no cálculo do passivo ativo cirúrgico
+      }
       return true;
-    }).map(item => {
+    }).map((item, idx) => {
       let rawAno = String(item.ANO_ENTRADA_PADRAO || 'N/I').trim();
-      let yearMatch = rawAno.match(/\b(19|20)\d{2}\b/);
-      let ano_entrada = yearMatch ? yearMatch[0] : 'N/I';
+      let yearMatches = rawAno.match(/\b(200[3-9]|201[0-9]|202[0-6])\b/g);
+      let ano_entrada = yearMatches ? yearMatches[yearMatches.length - 1] : 'N/I';
 
-      if (ano_entrada === 'N/I' && item['Nº PAE']) {
-        const paeMatch = String(item['Nº PAE']).match(/\b(19|20)\d{2}\b/);
-        if (paeMatch) ano_entrada = paeMatch[0];
+      const fallbackFields = ['Nº PAE', '  Nº PROCESSO PAE', 'PROTOCOLO N°PAE', 'PAE', 'APOSENTADORIA', 'DATA ENTRADA NO AGA', 'DATA DA TRAMITAÇÃO', 'Carimbo de data/hora', 'DATA_PUB_PADRAO', 'DATA', 'DTINI_MNEMONICO', 'DATA DA SAÍDA'];
+      if (ano_entrada === 'N/I') {
+        for (let field of fallbackFields) {
+          if (item[field]) {
+            let matches = String(item[field]).match(/\b(200[3-9]|201[0-9]|202[0-6])\b/g);
+            if (matches) {
+              ano_entrada = matches[matches.length - 1];
+              break;
+            }
+          }
+        }
       }
 
-      let status_normal = String(item.STATUS_PADRAO || 'Não Informado');
+      let status_normal = String(item.STATUS_PADRAO || 'Falta de Informações');
+      if (status_normal === 'nan' || status_normal === 'Não Informado' || status_normal === 'N/I' || status_normal.trim() === '') {
+        status_normal = 'Falta de Informações';
+      }
       let status_consolidado = status_normal;
       const lowerStatus = status_normal.toLowerCase();
       
@@ -311,12 +348,43 @@ function App() {
          }
       }
 
+      let ano_publicacao = 'N/I';
+      let rawDatePub = String(item.DATA_PUB_PADRAO || '');
+      let pubMatches = rawDatePub.match(/\b(200[3-9]|201[0-9]|202[0-6])\b/g);
+      if (pubMatches) {
+         ano_publicacao = pubMatches[pubMatches.length - 1];
+      } else {
+         const fallbackPubFields = ['NUMERO DA PORTARIA', 'STATUS_PADRAO', 'OBSERVAÇÃO', 'OBSERVAÇÕES', 'grupo_funcional', 'arquivo_origem', 'MOTIVO_MNEMONICO'];
+         for (let field of fallbackPubFields) {
+            if (item[field]) {
+               let val = String(item[field]).toLowerCase();
+               let matches = val.match(/\b(200[3-9]|201[0-9]|202[0-6])\b/g);
+               if (matches) {
+                  if (field === 'NUMERO DA PORTARIA' || field === 'arquivo_origem' || val.includes('portaria') || val.includes('publica') || val.includes('arquiva') || val.includes('processo de 20')) {
+                     ano_publicacao = matches[matches.length - 1];
+                     break;
+                  }
+               }
+            }
+         }
+      }
+
+      let e = parseInt(ano_entrada);
+      let p = parseInt(ano_publicacao);
+      if (!isNaN(e) && !isNaN(p) && p < e) {
+         // Sanity check: O processo não pode ter entrado DEPOIS de ter sido publicado/concluído.
+         // A portaria é a fonte mais forte de verdade do ano. Retroagimos a entrada para o mesmo ano.
+         ano_entrada = String(p);
+      }
+
       return {
         ...item,
+        _row_id: String(idx),
         status_normal,
         status_consolidado,
         grupo_funcional,
         ano_entrada,
+        ano_publicacao,
         dias_parado,
         movDateValid,
         'ESTÁ NO AGA': (String(item.STATUS_PADRAO).toUpperCase().includes('CONCLUIDO') || 
@@ -409,7 +477,7 @@ function App() {
        const local = String(d.LOCAL_PADRAO).toUpperCase();
        
        if (s.includes('pend') || s.includes('parado') || s.includes('atrasado') || s.includes('adequação')) return true;
-       if (s === 'não informado' || s.includes('aguard')) return true; 
+       if (s === 'falta de informações' || s === 'não informado' || s.includes('aguard')) return true; 
        if (local.includes('dre') || local.includes('ure')) return true; 
        if (d.dias_parado > 30) return true; // Inatividade também é gargalo
        
@@ -436,22 +504,38 @@ function App() {
 
   const timelineData = useMemo(() => {
     const filteredCounts = {};
-    // Pré-preenche com todos os anos existentes (inclusive 2003) com valor 0
+    // Pré-preenche com todos os anos existentes (inclusive N/I) com valor 0
     filteredData.forEach(d => {
-      const year = d.ano_entrada;
-      if (year && year !== 'N/I' && year !== 'nan') {
-        filteredCounts[year] = 0;
-      }
+      let year = d.ano_entrada;
+      if (!year || year === 'nan') year = 'N/I';
+      filteredCounts[year] = 0;
     });
 
     metrics.cirurgicosList.forEach(d => {
-      const year = d.ano_entrada;
-      if (year && year !== 'N/I' && year !== 'nan') {
-        filteredCounts[year] = (filteredCounts[year] || 0) + 1;
-      }
+      let year = d.ano_entrada;
+      if (!year || year === 'nan') year = 'N/I';
+      filteredCounts[year] = (filteredCounts[year] || 0) + 1;
     });
-    return Object.keys(filteredCounts).sort().map(k => ({ name: k, value: filteredCounts[k] }));
+    
+    return Object.keys(filteredCounts).sort((a, b) => {
+      if (a === 'N/I') return -1;
+      if (b === 'N/I') return 1;
+      return parseInt(a) - parseInt(b);
+    }).map(k => ({ name: k, value: filteredCounts[k] }));
   }, [metrics.cirurgicosList, filteredData]);
+
+  const timelineAposentadosData = useMemo(() => {
+    const counts = {};
+    metrics.concluidosList.forEach(d => {
+      let year = d.ano_publicacao || 'N/I';
+      counts[year] = (counts[year] || 0) + 1;
+    });
+    return Object.keys(counts).sort((a, b) => {
+      if (a === 'N/I') return -1;
+      if (b === 'N/I') return 1;
+      return parseInt(a) - parseInt(b);
+    }).map(k => ({ name: k, value: counts[k] }));
+  }, [metrics.concluidosList]);
 
   const setorData = useMemo(() => {
     const counts = {};
@@ -583,16 +667,45 @@ function App() {
   const paginatedProcessos = processosAtivosSearch.slice((pageProcessos - 1) * itemsPerPageProcessos, pageProcessos * itemsPerPageProcessos);
 
   const aposentadosSearch = useMemo(() => {
-    if (!searchAposentados) return metrics.concluidosList;
+    let base = metrics.concluidosList;
+    if (filterAposentadosStartYear || filterAposentadosEndYear) {
+      base = base.filter(d => {
+         let pYear = parseInt(d.ano_publicacao);
+         if (isNaN(pYear)) return false;
+         if (filterAposentadosStartYear && pYear < parseInt(filterAposentadosStartYear)) return false;
+         if (filterAposentadosEndYear && pYear > parseInt(filterAposentadosEndYear)) return false;
+         return true;
+      });
+    }
+    if (!searchAposentados) return base;
     const lowerSearch = searchAposentados.toLowerCase();
-    return metrics.concluidosList.filter(d => 
+    return base.filter(d => 
       String(d.SERVIDOR_PADRAO).toLowerCase().includes(lowerSearch) || 
       String(d.MATRICULA_PADRAO).toLowerCase().includes(lowerSearch)
     );
-  }, [metrics.concluidosList, searchAposentados]);
+  }, [metrics.concluidosList, searchAposentados, filterAposentadosStartYear, filterAposentadosEndYear]);
 
   const totalPagesAposentados = Math.ceil(aposentadosSearch.length / itemsPerPageAposentados);
   const paginatedAposentados = aposentadosSearch.slice((pageAposentados - 1) * itemsPerPageAposentados, pageAposentados * itemsPerPageAposentados);
+
+  const distribuicaoSearch = useMemo(() => {
+    let base = metrics.cirurgicosList;
+    if (distGrupo !== 'Todos') {
+       base = base.filter(d => String(d.grupo_funcional) === distGrupo);
+    }
+    if (distStartYear || distEndYear) {
+      base = base.filter(d => {
+         let eYear = parseInt(d.ano_entrada);
+         if (isNaN(eYear)) return false;
+         if (distStartYear && eYear < parseInt(distStartYear)) return false;
+         if (distEndYear && eYear > parseInt(distEndYear)) return false;
+         return true;
+      });
+    }
+    return base;
+  }, [metrics.cirurgicosList, distGrupo, distStartYear, distEndYear]);
+
+  const distributionAnalyzers = useMemo(() => ACTIVE_ANALYZERS.filter(a => a.matricula !== "452858-1" && a.name !== 'JOÃO JÚNIOR'), []);
 
   const formatLabel = (key) => {
     const mappings = {
@@ -654,6 +767,20 @@ function App() {
       setFilterEndYear(String(data.activeLabel));
       setActiveTab('processos');
       setPageProcessos(1);
+    }
+  };
+
+  const handleTimelineAposentadosClick = (data) => {
+    if (data && data.activeLabel) {
+      const year = String(data.activeLabel);
+      if (filterAposentadosStartYear === year && filterAposentadosEndYear === year) {
+        setFilterAposentadosStartYear('');
+        setFilterAposentadosEndYear('');
+      } else {
+        setFilterAposentadosStartYear(year);
+        setFilterAposentadosEndYear(year);
+        setPageAposentados(1);
+      }
     }
   };
 
@@ -734,9 +861,18 @@ function App() {
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div className={`status-badge ${String(proc.status_consolidado).toUpperCase().includes('CONCLUIDO') || String(proc.status_consolidado).toUpperCase().includes('ARQUIVADO') ? 'concluido' : 'andamento'}`} style={{ fontSize: '14px', padding: '8px 16px', marginBottom: '10px' }}>
-                {proc.status_consolidado}
-              </div>
+              {(() => {
+                let badgeClass = 'status-badge andamento';
+                const s = String(proc.status_consolidado).toLowerCase();
+                if (s.includes('pend') || s.includes('adequação') || s === 'falta de informações') badgeClass = 'status-badge pendencia';
+                if (s.includes('parado') || s.includes('atrasado') || proc.dias_parado > 30) badgeClass = 'status-badge parado';
+                if (s.includes('conclu') || s.includes('publicado') || s.includes('arquivado')) badgeClass = 'status-badge concluido';
+                return (
+                  <div className={badgeClass} style={{ fontSize: '14px', padding: '8px 16px', marginBottom: '10px' }}>
+                    {proc.status_consolidado}
+                  </div>
+                );
+              })()}
               <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
                 <strong>Analisador:</strong> {proc.INSTRUTOR_PADRAO}
               </div>
@@ -775,6 +911,10 @@ function App() {
                 if (val === null || val === undefined || val === 'nan' || val === 'N/I' || val === 'NaT') return null;
                 if (key.includes('_PADRAO') || key.includes('Unnamed') || key === 'status_consolidado' || key === 'dias_parado') return null;
                 if (['SERVIDOR', 'MATRICULA', 'matricula', 'CARGO', 'Nº PAE'].includes(key)) return null;
+                
+                if (key === 'ano_entrada' && (String(proc.status_consolidado).toLowerCase().includes('conclu') || String(proc.status_consolidado).toLowerCase().includes('arquivado') || String(proc.status_consolidado).toLowerCase().includes('publicado'))) {
+                   return null;
+                }
 
                 return (
                   <div className="detail-row" key={key}>
@@ -978,6 +1118,135 @@ function App() {
       </div>
     );
   };
+  const handleAutoDistribute = () => {
+    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]);
+    if (unassigned.length === 0) {
+      alert("Todos os processos deste filtro já estão distribuídos.");
+      return;
+    }
+    
+    const totalAnalyzers = distributionAnalyzers.length;
+    if (totalAnalyzers === 0) {
+      alert("Nenhum analisador disponível.");
+      return;
+    }
+    
+    const newAssignments = { ...assignedProcesses };
+    
+    unassigned.forEach((proc, idx) => {
+       const analyzerIndex = idx % totalAnalyzers;
+       const analyzer = distributionAnalyzers[analyzerIndex];
+       newAssignments[proc._row_id] = analyzer.matricula;
+    });
+    
+    setAssignedProcesses(newAssignments);
+    setDistSelectedProcesses([]);
+  };
+
+  const handleManualDistribute = () => {
+    if (!distAnalyzerSelect) {
+      alert("Selecione um analisador primeiro.");
+      return;
+    }
+    if (distSelectedProcesses.length === 0) {
+      alert("Selecione pelo menos um processo.");
+      return;
+    }
+    
+    const newAssignments = { ...assignedProcesses };
+    distSelectedProcesses.forEach(id => {
+       newAssignments[id] = distAnalyzerSelect;
+    });
+    
+    setAssignedProcesses(newAssignments);
+    setDistSelectedProcesses([]);
+  };
+
+  const toggleDistProcessSelection = (id) => {
+    setDistSelectedProcesses(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+  
+  const toggleAllDistProcessSelection = () => {
+    if (distSelectedProcesses.length === distribuicaoSearch.length) {
+      setDistSelectedProcesses([]);
+    } else {
+      setDistSelectedProcesses(distribuicaoSearch.map(p => p._row_id));
+    }
+  };
+
+  const generateDistributionPDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    let firstPage = true;
+    
+    distributionAnalyzers.forEach(analyzer => {
+      const analyzerProcs = distribuicaoSearch.filter(p => assignedProcesses[p._row_id] === analyzer.matricula);
+      if (analyzerProcs.length === 0) return;
+      
+      if (!firstPage) {
+         doc.addPage();
+      }
+      firstPage = false;
+      
+      doc.setFillColor(245, 245, 247);
+      doc.rect(0, 0, 210, 40, 'F');
+      
+      // Images (proportional sizes)
+      // Brasão (left) - adjusted for better aspect ratio
+      doc.addImage(brasaoGreyLogo, 'PNG', 14, 6, 26, 26);
+      
+      // SEDUC Logo (right) - adjusted for better aspect ratio
+      doc.addImage(seducLogo, 'PNG', 150, 10, 46, 16);
+      
+      doc.setTextColor(28, 28, 30);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text("SISTEMA CAPO GESTÃO", 105, 18, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text("Governo do Estado do Pará - SEDUC", 105, 33, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Ficha de Distribuição - Analisador(a): ${analyzer.name}`, 14, 45);
+      
+      doc.setFontSize(10);
+      doc.text(`Total Alocado: ${analyzerProcs.length}`, 196, 45, { align: 'right' });
+      
+      const tableData = analyzerProcs.map(p => [
+         p.SERVIDOR_PADRAO || 'N/I',
+         p.CPF || 'N/I',
+         p['Nº PAE'] || p['  Nº PROCESSO PAE'] || p.PROTOCOLO_PADRAO || 'N/I',
+         p.ano_entrada || 'N/I',
+         p.grupo_funcional || 'N/I',
+         p['LOCALIZAÇÃO DO PROCESSO'] || p.LOCAL_PADRAO || 'N/I'
+      ]);
+      
+      autoTable(doc, {
+        startY: 50,
+        head: [['Nome do Interessado', 'CPF', 'Protocolo/PAE', 'Ano', 'Grupo', 'Localização']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: { fillColor: [110, 110, 110] }, // Cinza elegante
+        styles: { fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 50 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 35 }
+        }
+      });
+    });
+    
+    if (firstPage) {
+      alert("Nenhum processo foi distribuído nesta lista de filtros!");
+      return;
+    }
+    
+    doc.save(`Ficha_Distribuicao_Passivo_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
 
   if (!session) {
     return <Login onLogin={setSession} />;
@@ -1474,7 +1743,7 @@ function App() {
                   {paginatedProcessos.map((proc, idx) => {
                     let badgeClass = 'status-badge andamento';
                     const s = String(proc.status_consolidado).toLowerCase();
-                    if (s.includes('pend') || s.includes('adequação')) badgeClass = 'status-badge pendencia';
+                    if (s.includes('pend') || s.includes('adequação') || s === 'falta de informações') badgeClass = 'status-badge pendencia';
                     if (s.includes('parado') || s.includes('atrasado') || proc.dias_parado > 30) badgeClass = 'status-badge parado';
                     if (s.includes('conclu') || s.includes('publicado')) badgeClass = 'status-badge concluido';
                     
@@ -1548,24 +1817,85 @@ function App() {
             <div className="glass-panel table-container">
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px'}}>
                 <div className="chart-header" style={{marginBottom: 0}}>Servidores Aposentados e Arquivados</div>
-                <div className="search-wrapper">
-                  <Search size={18} color="var(--text-secondary)" />
-                  <input 
-                    type="text" 
-                    className="search-input" 
-                    placeholder="Buscar Servidor ou Matrícula..." 
-                    value={searchAposentados}
-                    onChange={e => { setSearchAposentados(e.target.value); setPageAposentados(1); }}
-                  />
+                <div style={{display: 'flex', gap: '12px', alignItems: 'center'}}>
+                  <div className="filter-wrapper" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                    <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>Ano Início:</span>
+                    <input 
+                      type="number" 
+                      className="search-input" 
+                      style={{width: '90px'}} 
+                      placeholder="Ex: 2023"
+                      value={filterAposentadosStartYear}
+                      onChange={e => { setFilterAposentadosStartYear(e.target.value); setPageAposentados(1); }}
+                    />
+                  </div>
+                  <div className="filter-wrapper" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                    <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>Ano Fim:</span>
+                    <input 
+                      type="number" 
+                      className="search-input" 
+                      style={{width: '90px'}} 
+                      placeholder="Ex: 2025"
+                      value={filterAposentadosEndYear}
+                      onChange={e => { setFilterAposentadosEndYear(e.target.value); setPageAposentados(1); }}
+                    />
+                  </div>
+                  <div className="search-wrapper">
+                    <Search size={18} color="var(--text-secondary)" />
+                    <input 
+                      type="text" 
+                      className="search-input" 
+                      placeholder="Buscar Servidor ou Matrícula..." 
+                      value={searchAposentados}
+                      onChange={e => { setSearchAposentados(e.target.value); setPageAposentados(1); }}
+                    />
+                  </div>
                 </div>
               </div>
+
+              <div className="charts-grid" style={{ gridTemplateColumns: '1fr', marginBottom: '32px' }}>
+                <div className="glass-panel" style={{ background: 'var(--background-color)', border: '1px solid var(--panel-border)', boxShadow: 'none' }}>
+                  <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Série Histórica de Conclusões (Por Ano de Publicação)
+                    <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
+                      e.stopPropagation();
+                      setInfoModalContent({
+                        title: 'Série Histórica de Conclusões',
+                        description: 'Visão cronológica dos processos finalizados, baseada no ano de publicação no Diário Oficial. Clique nos pontos para filtrar a tabela.',
+                        legends: [
+                          { color: 'var(--success-color)', label: 'Eixo Y (Volume)', desc: 'Quantidade de processos publicados/concluídos naquele ano.' }
+                        ]
+                      });
+                    }} />
+                    {(filterAposentadosStartYear || filterAposentadosEndYear) && (
+                       <span style={{ fontSize: '13px', color: 'var(--accent-color)', marginLeft: 'auto', fontWeight: 600 }}>
+                          Filtro Ativo: {filterAposentadosStartYear || 'Início'} a {filterAposentadosEndYear || 'Fim'}
+                       </span>
+                    )}
+                  </div>
+                  <div className="chart-description">
+                    Este gráfico agrupa os processos concluídos e arquivados pelo <strong>Ano de Publicação</strong> no Diário Oficial. Clique num ano para filtrar a tabela abaixo.
+                  </div>
+                  <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
+                    <ResponsiveContainer>
+                      <LineChart data={timelineAposentadosData} onClick={handleTimelineAposentadosClick} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e5ea" vertical={false} />
+                        <XAxis dataKey="name" stroke="#86868b" fontSize={13} tickMargin={10} />
+                        <YAxis stroke="#86868b" fontSize={13} tickMargin={10} />
+                        <Tooltip cursor={{stroke: 'rgba(0,0,0,0.05)', strokeWidth: 2}} contentStyle={{ borderRadius: '12px', border: '1px solid #e5e5ea', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', fontFamily: 'var(--font-main)' }} />
+                        <Line type="monotone" dataKey="value" stroke="var(--success-color)" strokeWidth={3} activeDot={{ r: 8, fill: '#fff', stroke: 'var(--success-color)', strokeWidth: 2 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
               <table className="data-table">
                 <thead>
                   <tr>
                     <th>Servidor</th>
                     <th>Grupo</th>
                     <th>Cargo</th>
-                    <th>Ano Entrada</th>
                     <th>Data Conclusão</th>
                     <th>Status Final</th>
                   </tr>
@@ -1579,8 +1909,7 @@ function App() {
                       </td>
                       <td>{proc.grupo_funcional}</td>
                       <td>{proc.CARGO_PADRAO}</td>
-                      <td>{proc.ano_entrada}</td>
-                      <td>{proc.DATA_PUB_PADRAO && proc.DATA_PUB_PADRAO !== 'nan' ? proc.DATA_PUB_PADRAO : 'N/I'}</td>
+                      <td>{proc.ano_publicacao !== 'N/I' ? proc.ano_publicacao : (proc.DATA_PUB_PADRAO && proc.DATA_PUB_PADRAO !== 'nan' ? proc.DATA_PUB_PADRAO : 'N/I')}</td>
                       <td>
                         <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
                           <span className="status-badge concluido">{proc.status_consolidado}</span>
@@ -1628,52 +1957,162 @@ function App() {
 
           {activeTab === 'distribuicao' && (
             <div className="glass-panel table-container fade-in">
-              <div className="chart-header">Distribuição de Passivo (2003, 2004, 2005)</div>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-                Atribua processos passivos antigos aos analisadores em lote.
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+                <div>
+                  <div className="chart-header">Distribuição de Passivo</div>
+                  <p style={{ color: 'var(--text-secondary)' }}>
+                    Filtre o Volume Cirúrgico e atribua os processos aos Analisadores. <strong>Total na fila: {distribuicaoSearch.length}</strong>
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                    Pendentes: <strong>{distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]).length}</strong><br/>
+                    Rateio Est.: <strong>~{Math.floor(distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]).length / (distributionAnalyzers.length || 1))} p/ cada</strong>
+                  </div>
+                  <button onClick={handleAutoDistribute} style={{
+                    background: 'var(--success-color)', color: '#fff', border: 'none', 
+                    padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+                    fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px'
+                  }}>
+                    <Users size={18} /> Distribuição Automática
+                  </button>
+                  <button onClick={generateDistributionPDF} style={{
+                    background: 'var(--accent-color)', color: '#fff', border: 'none', 
+                    padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+                    fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px'
+                  }}>
+                    <Download size={18} /> Gerar PDF de Fichas
+                  </button>
+                </div>
+              </div>
               
-              <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center' }}>
-                <select className="filter-select" style={{ minWidth: '250px' }}>
-                  <option value="">Selecione o Analisador</option>
-                  {ACTIVE_ANALYZERS.map(a => (
-                    <option key={a.name} value={a.name}>{a.name}</option>
-                  ))}
-                </select>
-                <button style={{
-                  background: 'var(--accent-color)', color: '#fff', border: 'none', 
-                  padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
-                  fontWeight: 600, fontSize: '14px'
-                }}>
-                  Atribuir Selecionados
-                </button>
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="filter-wrapper" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                  <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>Grupo:</span>
+                  <select 
+                    className="filter-select" 
+                    value={distGrupo} 
+                    onChange={e => setDistGrupo(e.target.value)}
+                  >
+                    {uniqueGroups.map(g => <option key={g} value={g}>{g === 'Todos' ? 'Todos os Grupos' : g}</option>)}
+                  </select>
+                </div>
+                
+                <div className="filter-wrapper" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                  <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>Ano Início:</span>
+                  <input 
+                    type="number" 
+                    className="search-input" 
+                    style={{width: '90px'}} 
+                    placeholder="Ex: 2004"
+                    value={distStartYear}
+                    onChange={e => setDistStartYear(e.target.value)}
+                  />
+                </div>
+                
+                <div className="filter-wrapper" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
+                  <span style={{fontSize: '13px', color: 'var(--text-secondary)'}}>Ano Fim:</span>
+                  <input 
+                    type="number" 
+                    className="search-input" 
+                    style={{width: '90px'}} 
+                    placeholder="Ex: 2018"
+                    value={distEndYear}
+                    onChange={e => setDistEndYear(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '40px' }}><input type="checkbox" /></th>
-                    <th>Servidor</th>
-                    <th>Ano Entrada</th>
-                    <th>Status Atual</th>
-                    <th>Analisador</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {metrics.ativosLimposList.filter(p => ['2003', '2004', '2005'].includes(String(p.ano_entrada))).slice(0, 50).map((proc, idx) => (
-                    <tr key={idx}>
-                      <td><input type="checkbox" /></td>
-                      <td>
-                        <div style={{fontWeight: 600, color: 'var(--text-primary)'}}>{proc.SERVIDOR_PADRAO}</div>
-                        <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: '4px'}}>Mat: {proc.MATRICULA_PADRAO}</div>
-                      </td>
-                      <td>{proc.ano_entrada}</td>
-                      <td>{proc.status_consolidado}</td>
-                      <td>{proc.INSTRUTOR_PADRAO || 'Sem Atribuição'}</td>
+              <div style={{ height: '1px', background: 'var(--panel-border)', margin: '24px 0' }}></div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Atribuição Manual ({distSelectedProcesses.length} selecionados)
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <select 
+                    className="filter-select" 
+                    style={{ minWidth: '250px' }}
+                    value={distAnalyzerSelect}
+                    onChange={e => setDistAnalyzerSelect(e.target.value)}
+                  >
+                    <option value="">Selecione o Analisador...</option>
+                    {distributionAnalyzers.map(a => (
+                      <option key={a.matricula} value={a.matricula}>{a.name}</option>
+                    ))}
+                  </select>
+                  <button onClick={handleManualDistribute} style={{
+                    background: 'var(--text-primary)', color: '#fff', border: 'none', 
+                    padding: '8px 16px', borderRadius: '8px', cursor: 'pointer',
+                    fontWeight: 600, fontSize: '13px'
+                  }}>
+                    Atribuir Marcados
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ maxHeight: '600px', overflowY: 'auto', borderRadius: '12px', border: '1px solid var(--panel-border)' }}>
+                <table className="data-table" style={{ margin: 0 }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f5f5f7' }}>
+                    <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={distribuicaoSearch.length > 0 && distSelectedProcesses.length === distribuicaoSearch.length}
+                          onChange={toggleAllDistProcessSelection}
+                        />
+                      </th>
+                      <th>Servidor / PAE</th>
+                      <th>Ano Entrada</th>
+                      <th>Grupo</th>
+                      <th>Atribuído Para</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {distribuicaoSearch.length === 0 ? (
+                      <tr><td colSpan="5" style={{ textAlign: 'center', padding: '32px' }}>Nenhum processo encontrado no filtro.</td></tr>
+                    ) : (
+                      distribuicaoSearch.map((proc) => {
+                        const assignedMatricula = assignedProcesses[proc._row_id];
+                        const analyzerObj = distributionAnalyzers.find(a => a.matricula === assignedMatricula);
+                        
+                        return (
+                          <tr key={proc._row_id} style={{ cursor: 'pointer' }} onClick={() => handleRowClick(proc)}>
+                            <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                checked={distSelectedProcesses.includes(proc._row_id)}
+                                onChange={() => toggleDistProcessSelection(proc._row_id)}
+                              />
+                            </td>
+                            <td>
+                              <div style={{fontWeight: 600, color: 'var(--text-primary)'}}>{proc.SERVIDOR_PADRAO}</div>
+                              <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: '4px'}}>PAE: {proc['Nº PAE'] || 'N/I'}</div>
+                            </td>
+                            <td>{proc.ano_entrada}</td>
+                            <td>{proc.grupo_funcional}</td>
+                            <td onClick={(e) => {
+                               if (analyzerObj) {
+                                  e.stopPropagation();
+                                  setSelectedAnalyzer(analyzerObj.name);
+                                  setActiveTab('producao');
+                               }
+                            }}>
+                              {analyzerObj ? (
+                                <span className="status-badge" style={{ background: 'var(--success-color)', color: '#fff', cursor: 'pointer' }}>
+                                  {analyzerObj.name}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '13px' }}>Sem Atribuição</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
