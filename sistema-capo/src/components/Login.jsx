@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Landmark, Lock, User, AlertCircle, FileText, PieChart } from 'lucide-react';
+import Cadastro from './Cadastro';
 
 const Login = ({ onLogin }) => {
   const [matricula, setMatricula] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isCadastro, setIsCadastro] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('cadastro') === 'true') {
+      setIsCadastro(true);
+    }
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -40,6 +49,35 @@ const Login = ({ onLogin }) => {
       setLoading(false);
     }
   };
+
+  if (isCadastro) {
+    return (
+       <div style={{
+         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between',
+         minHeight: '100vh', background: 'var(--background-color)', padding: '40px 20px 30px 20px',
+         position: 'relative', overflow: 'hidden'
+       }}>
+         {/* Background Watermarks */}
+         <div style={{ position: 'absolute', right: '-10%', bottom: '-20%', opacity: 0.03, transform: 'rotate(-15deg)', pointerEvents: 'none', zIndex: 0 }}>
+           <FileText size={800} color="#1c1c1e" strokeWidth={1} />
+         </div>
+         <div style={{ position: 'absolute', left: '-5%', top: '-10%', opacity: 0.03, transform: 'rotate(15deg)', pointerEvents: 'none', zIndex: 0 }}>
+           <PieChart size={600} color="#1c1c1e" strokeWidth={1} />
+         </div>
+         
+         <Cadastro onVoltar={() => setIsCadastro(false)} />
+         
+         {/* Footer */}
+         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginTop: '30px', opacity: 0.6, flexWrap: 'wrap', textAlign: 'center', zIndex: 1 }}>
+           <img src="/logo_seduc_hori_bc_gray.png" alt="Seduc Logo" style={{ height: '28px', objectFit: 'contain' }} />
+           <div style={{ height: '24px', width: '1px', background: 'var(--text-secondary)' }}></div>
+           <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500, letterSpacing: '0.5px' }}>
+             Secretaria de Educação © Todos os direitos reservados
+           </span>
+         </div>
+       </div>
+    );
+  }
 
   return (
     <div style={{
@@ -207,6 +245,15 @@ const Login = ({ onLogin }) => {
             {loading ? 'Autenticando...' : 'Entrar no Sistema'}
           </button>
         </form>
+        
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
+           <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer', transition: 'color 0.2s' }} 
+             onMouseOver={e => e.target.style.color = '#1c1c1e'}
+             onMouseOut={e => e.target.style.color = 'var(--text-secondary)'}
+             onClick={() => setIsCadastro(true)}>
+             Sou Analista e quero me cadastrar
+           </span>
+        </div>
       </div>
       </div>
       

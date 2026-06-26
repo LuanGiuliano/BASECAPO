@@ -25,7 +25,8 @@ import {
   Edit3,
   Table,
   Info,
-  Database
+  Database,
+  Lock
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -138,6 +139,31 @@ function App() {
         if (isMounted) {
           setRawData(allData);
         }
+
+        // Fetch Assignments and Updates for RBAC and Tracking
+        try {
+          const { data: assignments } = await supabase.from('process_assignments').select('*');
+          if (assignments && isMounted) {
+             const map = {};
+             assignments.forEach(a => { map[a.process_id] = a.matricula; });
+             setAssignedProcesses(map);
+          }
+        } catch(e) { console.warn("Tabela process_assignments ausente ou falhou"); }
+
+        try {
+          const { data: updates } = await supabase.from('process_updates').select('*');
+          if (updates && isMounted) {
+             setDbProcessUpdates(updates);
+          }
+        } catch(e) { console.warn("Tabela process_updates ausente ou falhou"); }
+
+        try {
+          const { data: config } = await supabase.from('system_settings').select('value').eq('key', 'cadastro_aberto').single();
+          if (config && isMounted) {
+             setCadastroAberto(String(config.value) === 'true');
+          }
+        } catch(e) {}
+
       } catch (err) {
         console.error("Erro ao buscar dados do Supabase:", err);
       } finally {
@@ -162,6 +188,12 @@ function App() {
   const [filterAposentadosStartYear, setFilterAposentadosStartYear] = useState('');
   const [filterAposentadosEndYear, setFilterAposentadosEndYear] = useState('');
   const [selectedProcess, setSelectedProcess] = useState(null);
+  
+  const [updateStatus, setUpdateStatus] = useState('');
+  const [updatePae, setUpdatePae] = useState('');
+  const [updateObs, setUpdateObs] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
   const [selectedAnalyzer, setSelectedAnalyzer] = useState(null);
   const [quickFilter, setQuickFilter] = useState('Limpos');
   const [distGrupo, setDistGrupo] = useState('Todos');
@@ -173,6 +205,8 @@ function App() {
   const [itemsPerPageProcessos, setItemsPerPageProcessos] = useState(20);
   const [itemsPerPageAposentados, setItemsPerPageAposentados] = useState(20);
   const [infoModalContent, setInfoModalContent] = useState(null);
+  const [dbProcessUpdates, setDbProcessUpdates] = useState([]);
+  const [cadastroAberto, setCadastroAberto] = useState(false);
 
   const matriculaAtual = session ? session.user.email.split('@')[0] : '';
   const isGestor = matriculaAtual === 'gestor' || matriculaAtual === '5991332' || session?.user?.user_metadata?.cargo === 'Gestor';
@@ -377,6 +411,21 @@ function App() {
          ano_entrada = String(p);
       }
 
+      // Aplica as atualizações do banco de dados (se houver)
+      const paeOrIdx = String(item['Nº PAE'] || idx);
+      const update = dbProcessUpdates.find(u => u.process_id === paeOrIdx || u.process_id === String(idx));
+      
+      if (update) {
+         if (update.novo_status) {
+            status_normal = update.novo_status;
+            status_consolidado = update.novo_status;
+         }
+         if (update.novo_pae) {
+            item['Nº PAE'] = update.novo_pae;
+         }
+         item._db_observacao = update.observacao;
+      }
+
       return {
         ...item,
         _row_id: String(idx),
@@ -387,24 +436,19 @@ function App() {
         ano_publicacao,
         dias_parado,
         movDateValid,
-        'ESTÁ NO AGA': (String(item.STATUS_PADRAO).toUpperCase().includes('CONCLUIDO') || 
-                        String(item.STATUS_PADRAO).toUpperCase().includes('PUBLICADO') || 
-                        String(item.STATUS_PADRAO).toUpperCase().includes('ARQUIVADO')) ? 'NÃO (Processo Finalizado/Arquivado)' : item['ESTÁ NO AGA']
+        'ESTÁ NO AGA': (String(status_normal).toUpperCase().includes('CONCLUIDO') || 
+                        String(status_normal).toUpperCase().includes('PUBLICADO') || 
+                        String(status_normal).toUpperCase().includes('ARQUIVADO')) ? 'NÃO (Processo Finalizado/Arquivado)' : item['ESTÁ NO AGA']
       };
     });
-  }, [rawData]);
+  }, [rawData, dbProcessUpdates]);
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
-      if (session) {
-        const matricula = session.user.email.split('@')[0];
-        // Se a matrícula não for de gestor (admin), filtra pelo analisador
-        if (!isGestor) {
-          // Precisamos de uma forma de vincular matrícula ao nome do instrutor.
-          // Como não temos a tabela, vamos assumir que a matrícula consta no MATRICULA_PADRAO
-          // do analisador, ou que instrutor é filtrado de outra forma.
-          // Para esta entrega, se não for gestor, filtra pelo nome/matrícula se for possível.
-          // (No banco de dados real isso seria feito no backend).
+      if (!isGestor) {
+        const paeOrIdx = String(item['Nº PAE'] || item._row_id);
+        if (assignedProcesses[paeOrIdx] !== matriculaAtual) {
+           return false;
         }
       }
 
@@ -424,7 +468,7 @@ function App() {
       
       return matchGroup && matchDate;
     });
-  }, [data, filterGroup, filterStartYear, filterEndYear, session]);
+  }, [data, filterGroup, filterStartYear, filterEndYear, session, isGestor, assignedProcesses, matriculaAtual]);
 
   const metrics = useMemo(() => {
     // 1. Definição de Arquivados e Concluídos
@@ -757,6 +801,9 @@ function App() {
 
   const handleRowClick = (proc) => {
     setSelectedProcess(proc);
+    setUpdateStatus(proc.status_consolidado || '');
+    setUpdatePae(proc['Nº PAE'] || '');
+    setUpdateObs(proc._db_observacao || '');
     setPreviousTab(activeTab);
     setActiveTab('processoDetalhe');
   };
@@ -781,6 +828,39 @@ function App() {
         setFilterAposentadosEndYear(year);
         setPageAposentados(1);
       }
+    }
+  };
+
+  const handleUpdateProcess = async (e) => {
+    e.preventDefault();
+    if (!selectedProcess) return;
+    setIsUpdating(true);
+    
+    const p_key = String(selectedProcess['Nº PAE'] || selectedProcess._row_id);
+    const payload = {
+       process_id: p_key,
+       matricula: matriculaAtual,
+       novo_status: updateStatus,
+       novo_pae: updatePae,
+       observacao: updateObs
+    };
+
+    try {
+       const { error } = await supabase.from('process_updates').upsert(payload);
+       if (error) throw error;
+       
+       setDbProcessUpdates(prev => {
+          const arr = prev.filter(u => u.process_id !== p_key);
+          return [...arr, payload];
+       });
+       
+       alert('Processo atualizado com sucesso!');
+       setActiveTab(previousTab);
+    } catch(err) {
+       console.error("Erro ao atualizar processo:", err);
+       alert("Erro ao atualizar processo. Tente novamente.");
+    } finally {
+       setIsUpdating(false);
     }
   };
 
@@ -926,6 +1006,55 @@ function App() {
             </div>
           </div>
         </div>
+
+        <div className="glass-panel" style={{ marginTop: '32px' }}>
+          <h3 style={{ fontSize: '17px', color: 'var(--text-primary)', marginBottom: '24px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px', letterSpacing: '-0.3px' }}>
+            Atualizar Processo
+          </h3>
+          <form onSubmit={handleUpdateProcess} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+               <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Status Consolidado</label>
+               <select value={updateStatus} onChange={e => setUpdateStatus(e.target.value)}
+                 style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}>
+                 <option value="Falta de Informações">Falta de Informações</option>
+                 <option value="Em Análise">Em Análise</option>
+                 <option value="Adequação Documental">Adequação Documental</option>
+                 <option value="PUBLICADO (Concluído)">Concluído / Publicado</option>
+                 <option value="ARQUIVADO">Arquivado</option>
+                 {updateStatus && !["Falta de Informações", "Em Análise", "Adequação Documental", "PUBLICADO (Concluído)", "ARQUIVADO"].includes(updateStatus) && (
+                   <option value={updateStatus}>{updateStatus} (Atual)</option>
+                 )}
+               </select>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+               <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Nº PAE 4</label>
+               <input type="text" value={updatePae} onChange={e => setUpdatePae(e.target.value)}
+                 style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                 placeholder="Preencher protocolo" />
+            </div>
+
+            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+               <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Observação / Pendência</label>
+               <textarea value={updateObs} onChange={e => setUpdateObs(e.target.value)} rows={3}
+                 style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px', resize: 'vertical' }}
+                 placeholder="Digite os detalhes do que falta, pendências da escola ou observações adicionais..." />
+            </div>
+
+            <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+               <button type="submit" disabled={isUpdating}
+                 style={{ 
+                   background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
+                   color: 'white', border: 'none', padding: '14px 28px', borderRadius: '10px', 
+                   fontSize: '15px', fontWeight: 600, cursor: isUpdating ? 'not-allowed' : 'pointer',
+                   opacity: isUpdating ? 0.7 : 1, transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                 }}>
+                 {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
+               </button>
+            </div>
+          </form>
+        </div>
+
       </div>
     );
   };
@@ -1118,6 +1247,13 @@ function App() {
       </div>
     );
   };
+  const saveAssignmentsToDB = async (assignmentsArray) => {
+    try {
+      const { error } = await supabase.from('process_assignments').upsert(assignmentsArray);
+      if (error) console.error("Erro ao salvar atribuições:", error);
+    } catch(e) {}
+  };
+
   const handleAutoDistribute = () => {
     const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]);
     if (unassigned.length === 0) {
@@ -1132,15 +1268,20 @@ function App() {
     }
     
     const newAssignments = { ...assignedProcesses };
+    const dbPayload = [];
     
     unassigned.forEach((proc, idx) => {
        const analyzerIndex = idx % totalAnalyzers;
        const analyzer = distributionAnalyzers[analyzerIndex];
        newAssignments[proc._row_id] = analyzer.matricula;
+       
+       // Using _row_id as process_id because we map using it in UI for now
+       dbPayload.push({ process_id: proc._row_id, matricula: analyzer.matricula });
     });
     
     setAssignedProcesses(newAssignments);
     setDistSelectedProcesses([]);
+    saveAssignmentsToDB(dbPayload);
   };
 
   const handleManualDistribute = () => {
@@ -1154,12 +1295,16 @@ function App() {
     }
     
     const newAssignments = { ...assignedProcesses };
+    const dbPayload = [];
+    
     distSelectedProcesses.forEach(id => {
        newAssignments[id] = distAnalyzerSelect;
+       dbPayload.push({ process_id: id, matricula: distAnalyzerSelect });
     });
     
     setAssignedProcesses(newAssignments);
     setDistSelectedProcesses([]);
+    saveAssignmentsToDB(dbPayload);
   };
 
   const toggleDistProcessSelection = (id) => {
@@ -1328,15 +1473,18 @@ function App() {
           
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
           
-          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Ferramentas de Gestão</div>
-          <a href="#" className={`nav-item ${activeTab === 'registrar' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('registrar'); }}><Edit3 size={20} /> Registrar atividade</a>
-          <a href="#" className={`nav-item ${activeTab === 'distribuicao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('distribuicao'); }}><Folder size={20} /> Distribuição de Passivo</a>
-          <a href="#" className={`nav-item ${activeTab === 'planilhao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('planilhao'); }}><Table size={20} /> Planilhão painel gerencial</a>
+          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Espaço de Trabalho</div>
+          <a href="#" className={`nav-item ${activeTab === 'atividades' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('atividades'); }}><Edit3 size={20} /> Minhas Atividades</a>
+          <a href="#" className={`nav-item ${activeTab === 'planilhao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('planilhao'); }}><Table size={20} /> Planilhão Geral</a>
           
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
 
           {isGestor && (
-            <a href="#" className={`nav-item ${activeTab === 'configuracoes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('configuracoes'); }}><Settings size={20} /> Configurações</a>
+            <>
+              <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Administração</div>
+              <a href="#" className={`nav-item ${activeTab === 'distribuicao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('distribuicao'); }}><Folder size={20} /> Distribuição de Passivo</a>
+              <a href="#" className={`nav-item ${activeTab === 'configuracoes' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('configuracoes'); }}><Settings size={20} /> Configurações</a>
+            </>
           )}
         </nav>
       </aside>
@@ -1955,7 +2103,50 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'distribuicao' && (
+          {activeTab === 'atividades' && (
+             <div className="glass-panel table-container fade-in">
+               <div className="chart-header">Minhas Atividades</div>
+               <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
+                 Processos atribuídos a você para análise. Clique no processo para atualizar os dados.
+               </p>
+               <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Servidor</th>
+                      <th>PAE</th>
+                      <th>Grupo Funcional</th>
+                      <th>Status Atual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {distribuicaoSearch.filter(p => assignedProcesses[p['Nº PAE'] || p._row_id] === matriculaAtual).map(p => (
+                      <tr key={p._row_id} onClick={() => handleRowClick(p)} style={{cursor: 'pointer'}}>
+                         <td>{p.SERVIDOR_PADRAO}</td>
+                         <td>{p['Nº PAE'] || 'N/I'}</td>
+                         <td>{p.grupo_funcional}</td>
+                         <td>
+                           {(() => {
+                              let badgeClass = 'status-badge andamento';
+                              const s = String(p.status_consolidado).toLowerCase();
+                              if (s.includes('pend') || s.includes('adequação') || s === 'falta de informações') badgeClass = 'status-badge pendencia';
+                              if (s.includes('parado') || s.includes('atrasado') || p.dias_parado > 30) badgeClass = 'status-badge parado';
+                              if (s.includes('conclu') || s.includes('publicado') || s.includes('arquivado')) badgeClass = 'status-badge concluido';
+                              return <span className={badgeClass}>{p.status_consolidado}</span>;
+                           })()}
+                         </td>
+                      </tr>
+                    ))}
+                    {distribuicaoSearch.filter(p => assignedProcesses[p['Nº PAE'] || p._row_id] === matriculaAtual).length === 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>Nenhum processo atribuído a você no momento.</td>
+                      </tr>
+                    )}
+                  </tbody>
+               </table>
+             </div>
+          )}
+
+          {activeTab === 'distribuicao' && isGestor && (
             <div className="glass-panel table-container fade-in">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
                 <div>
@@ -2132,12 +2323,48 @@ function App() {
 
           {activeTab === 'configuracoes' && isGestor && (
             <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Controle de Cadastros */}
+              <div className="glass-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                 <div>
+                    <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'var(--accent-glow)', color: 'var(--accent-color)', padding: '8px', borderRadius: '8px' }}>
+                        <Lock size={20} />
+                      </div>
+                      Controle de Inscrições
+                    </div>
+                    <p className="chart-description">Permita que os Analistas criem suas próprias contas através do link especial de cadastro.</p>
+                 </div>
+                 <div>
+                    <button 
+                       onClick={async () => {
+                          const novoStatus = !cadastroAberto;
+                          try {
+                             const { error } = await supabase.from('system_settings').upsert({ key: 'cadastro_aberto', value: novoStatus ? 'true' : 'false' });
+                             if (error) {
+                               alert('Erro ao salvar no banco: ' + error.message + '\n\nCertifique-se de que você rodou o código do arquivo supabase_schema.sql no SQL Editor do Supabase.');
+                               return;
+                             }
+                             setCadastroAberto(novoStatus);
+                          } catch(e) { console.error(e) }
+                       }}
+                       style={{
+                         padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 600, fontSize: '14px', cursor: 'pointer',
+                         background: cadastroAberto ? 'var(--danger-color)' : 'var(--success-color)', color: '#fff',
+                         boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                       }}>
+                       {cadastroAberto ? 'Fechar Vagas' : 'Abrir Vagas de Cadastro'}
+                    </button>
+                    {cadastroAberto && <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '8px', textAlign: 'center' }}>Link: /?cadastro=true</div>}
+                 </div>
+              </div>
+
               <div className="glass-panel">
                 <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ background: 'var(--accent-glow)', color: 'var(--accent-color)', padding: '8px', borderRadius: '8px' }}>
                     <Users size={20} />
                   </div>
-                  Cadastrar Novo Usuário
+                  Cadastrar Novo Usuário (Manual)
                 </div>
                 <p className="chart-description">Crie acessos para Analisadores ou novos Gestores do sistema. A sessão atual não será interrompida.</p>
                 
