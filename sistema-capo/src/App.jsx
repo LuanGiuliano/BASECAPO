@@ -73,7 +73,7 @@ const ACTIVE_ANALYZERS = [
   { name: "DAFNE DA SILVA RODRIGUES", matricula: "55587100-2" },
   { name: "JOE RODRIGUES RIBEIRO", matricula: "5721130-2" },
   { name: "FLAVIO JOSÉ PIMENTEL PENNA", matricula: "3252248-2" },
-  { name: "JOÃO JÚNIOR", matricula: "" },
+  { name: "JOÃO JÚNIOR", matricula: "57214603-1" },
   { name: "MARIA HELENA LOPES DE OLIVEIRA", matricula: "452858-1" },
   { name: "MARIA DO ROSÁRIO MONTEIRO SILVA", matricula: "57210664-1" },
   { name: "PAULO ANDRÉ COSTA RIBEIRO", matricula: "5890602-1" }
@@ -144,6 +144,7 @@ function App() {
         try {
           const { data: assignments } = await supabase.from('process_assignments').select('*');
           if (assignments && isMounted) {
+             setRawAssignments(assignments);
              const map = {};
              assignments.forEach(a => { map[a.process_id] = a.matricula; });
              setAssignedProcesses(map);
@@ -221,6 +222,8 @@ function App() {
   const [assignedProcesses, setAssignedProcesses] = useState({});
   const [originalAssignedProcesses, setOriginalAssignedProcesses] = useState({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [rawAssignments, setRawAssignments] = useState([]);
+  const [showDistributionHistory, setShowDistributionHistory] = useState(false);
   const [distSelectedProcesses, setDistSelectedProcesses] = useState([]);
   const [distAnalyzerSelect, setDistAnalyzerSelect] = useState('');
   const [autoDistributeSelected, setAutoDistributeSelected] = useState([]);
@@ -486,7 +489,8 @@ function App() {
     return data.filter(item => {
       if (!isGestor) {
         const paeOrIdx = String(item['Nº PAE'] || item._row_id);
-        if (assignedProcesses[paeOrIdx] !== matriculaAtual) {
+        const assigned = assignedProcesses[paeOrIdx];
+        if (!assigned || String(assigned).split('-')[0] !== String(matriculaAtual).split('-')[0]) {
            return false;
         }
       }
@@ -789,10 +793,14 @@ function App() {
   }, [metrics.cirurgicosList, distGrupo, distStartYear, distEndYear]);
 
   const minhasAtividades = useMemo(() => {
-    return data.filter(p => assignedProcesses[p['Nº PAE'] || p._row_id] === matriculaAtual);
+    return data.filter(p => {
+      const assigned = assignedProcesses[p['Nº PAE'] || p._row_id];
+      if (!assigned) return false;
+      return String(assigned).split('-')[0] === String(matriculaAtual).split('-')[0];
+    });
   }, [data, assignedProcesses, matriculaAtual]);
 
-  const distributionAnalyzers = useMemo(() => combinedAnalyzers.filter(a => a.matricula !== "452858-1" && a.name !== 'JOÃO JÚNIOR'), [combinedAnalyzers]);
+  const distributionAnalyzers = useMemo(() => combinedAnalyzers, [combinedAnalyzers]);
 
   const formatLabel = (key) => {
     const mappings = {
@@ -926,6 +934,37 @@ function App() {
     } catch(err) {
        console.error("Erro ao atualizar processo:", err);
        alert("Erro ao atualizar processo. Tente novamente.");
+    } finally {
+       setIsUpdating(false);
+    }
+  };
+
+  const handleQuickConclude = async (proc) => {
+    if (!window.confirm(`Tem certeza que deseja marcar o processo ${proc['Nº PAE'] || 'S/N'} como Concluído?`)) return;
+    
+    setIsUpdating(true);
+    const p_key = String(proc['Nº PAE'] || proc._row_id);
+    const payload = {
+       process_id: p_key,
+       matricula: matriculaAtual,
+       novo_status: 'Concluído',
+       novo_pae: proc['Nº PAE'] || '',
+       observacao: proc._db_observacao || 'Concluído rapidamente via painel'
+    };
+
+    try {
+       const { error } = await supabase.from('process_updates').upsert(payload);
+       if (error) throw error;
+       
+       setDbProcessUpdates(prev => {
+          const arr = prev.filter(u => u.process_id !== p_key);
+          return [...arr, payload];
+       });
+       
+       alert('Processo concluído com sucesso! Contabilizado na sua produção.');
+    } catch(err) {
+       console.error("Erro ao concluir processo:", err);
+       alert("Erro ao concluir. Tente novamente.");
     } finally {
        setIsUpdating(false);
     }
@@ -1315,21 +1354,71 @@ function App() {
     );
   };
   const handleSaveDistribution = async () => {
-    const assignmentsArray = Object.keys(assignedProcesses).map(process_id => ({
-      process_id,
-      matricula: assignedProcesses[process_id]
-    }));
+    const timestamp = new Date().toISOString();
+    const changedAssignments = [];
+    Object.keys(assignedProcesses).forEach(process_id => {
+       if (assignedProcesses[process_id] !== originalAssignedProcesses[process_id]) {
+          changedAssignments.push({
+             process_id,
+             matricula: assignedProcesses[process_id],
+             assigned_at: timestamp
+          });
+       }
+    });
+
+    if (changedAssignments.length === 0) {
+       setHasUnsavedChanges(false);
+       return;
+    }
+
     try {
-      const { error } = await supabase.from('process_assignments').upsert(assignmentsArray);
-      if (error) {
-         console.error("Erro ao salvar atribuições:", error);
-         alert("Erro ao salvar a distribuição no banco de dados.");
-      } else {
-         setOriginalAssignedProcesses(assignedProcesses);
-         setHasUnsavedChanges(false);
-         alert("Distribuição salva e confirmada com sucesso! Os processos já aparecerão no painel da equipe.");
+      const batchSize = 1000;
+      let newRawAssignments = [...rawAssignments];
+      for (let i = 0; i < changedAssignments.length; i += batchSize) {
+         const batch = changedAssignments.slice(i, i + batchSize);
+         const { error } = await supabase.from('process_assignments').upsert(batch);
+         if (error) {
+            console.error("Erro no batch:", error);
+            throw error;
+         }
+         newRawAssignments = [...newRawAssignments, ...batch];
       }
-    } catch(e) {}
+      
+      setRawAssignments(newRawAssignments);
+      setOriginalAssignedProcesses(assignedProcesses);
+      setHasUnsavedChanges(false);
+      alert("Distribuição salva e confirmada com sucesso! Os processos já aparecerão no painel da equipe.");
+    } catch(e) {
+       console.error("Erro ao salvar atribuições:", e);
+       alert("Erro ao salvar a distribuição no banco de dados.");
+    }
+  };
+
+  const handleDeleteBatch = async (timestamp) => {
+    if (!window.confirm("ATENÇÃO: Você está prestes a cancelar a distribuição de TODO ESTE LOTE.\\n\\nIsso removerá os processos da fila dos servidores e eles voltarão para o passivo não-distribuído.\\nDeseja realmente excluir este lote?")) return;
+    
+    try {
+      const { error } = await supabase
+        .from('process_assignments')
+        .delete()
+        .eq('assigned_at', timestamp);
+        
+      if (error) throw error;
+      
+      // Update local states
+      const filteredRaw = rawAssignments.filter(a => a.assigned_at !== timestamp);
+      setRawAssignments(filteredRaw);
+      
+      const newMap = {};
+      filteredRaw.forEach(a => { newMap[a.process_id] = a.matricula; });
+      setAssignedProcesses(newMap);
+      setOriginalAssignedProcesses(newMap);
+      
+      alert("Lote de distribuição cancelado com sucesso!");
+    } catch(err) {
+      console.error("Erro ao excluir lote:", err);
+      alert("Erro ao excluir o lote do banco de dados.");
+    }
   };
 
   const handleUndoDistribution = () => {
@@ -2254,11 +2343,12 @@ function App() {
                       <th>PAE</th>
                       <th>Grupo Funcional</th>
                       <th>Status Atual</th>
+                      <th style={{ textAlign: 'right' }}>Ações Rápidas</th>
                     </tr>
                   </thead>
                   <tbody>
                     {minhasAtividades.map(p => (
-                      <tr key={p._row_id} onClick={() => handleRowClick(p)} style={{cursor: 'pointer'}}>
+                      <tr key={p._row_id} style={{cursor: 'default'}}>
                          <td>{p.SERVIDOR_PADRAO}</td>
                          <td>{p['Nº PAE'] || 'N/I'}</td>
                          <td>{p.grupo_funcional}</td>
@@ -2272,11 +2362,27 @@ function App() {
                               return <span className={badgeClass}>{p.status_consolidado}</span>;
                            })()}
                          </td>
+                         <td style={{ textAlign: 'right' }}>
+                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); handleRowClick(p); }}
+                               style={{ background: 'var(--panel-border)', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-primary)' }}
+                             >
+                               <Edit3 size={14} /> Editar
+                             </button>
+                             <button 
+                               onClick={(e) => { e.stopPropagation(); handleQuickConclude(p); }}
+                               style={{ background: 'var(--success-color)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                             >
+                               <CheckCircle2 size={14} /> Concluir
+                             </button>
+                           </div>
+                         </td>
                       </tr>
                     ))}
                     {minhasAtividades.length === 0 && (
                       <tr>
-                        <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>Nenhum processo atribuído a você no momento.</td>
+                        <td colSpan={5} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>Nenhum processo atribuído a você no momento.</td>
                       </tr>
                     )}
                   </tbody>
@@ -2505,6 +2611,64 @@ function App() {
                     )}
                   </tbody>
                 </table>
+              </div>
+              
+              <div style={{ marginTop: '24px' }}>
+                <div 
+                  onClick={() => setShowDistributionHistory(!showDistributionHistory)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: '#f5f5f7', borderRadius: '12px', cursor: 'pointer', border: '1px solid var(--panel-border)' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <History size={18} color="var(--text-primary)" />
+                    <h3 style={{ margin: 0, fontSize: '14px', color: 'var(--text-primary)' }}>Histórico de Lotes de Distribuição</h3>
+                  </div>
+                  <span style={{ fontSize: '13px', color: 'var(--accent-color)', fontWeight: 600 }}>
+                    {showDistributionHistory ? 'Ocultar Histórico' : 'Ver Histórico'}
+                  </span>
+                </div>
+                
+                {showDistributionHistory && (
+                  <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {(() => {
+                      const batches = {};
+                      rawAssignments.forEach(a => {
+                         if (!a.assigned_at) return;
+                         if (!batches[a.assigned_at]) batches[a.assigned_at] = { count: 0, matriculas: new Set() };
+                         batches[a.assigned_at].count++;
+                         batches[a.assigned_at].matriculas.add(a.matricula);
+                      });
+                      
+                      const sortedBatches = Object.keys(batches).sort((a,b) => new Date(b) - new Date(a));
+                      
+                      if (sortedBatches.length === 0) {
+                         return <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Nenhum histórico de lote encontrado.</div>;
+                      }
+                      
+                      return sortedBatches.map(timestamp => {
+                         const dateObj = new Date(timestamp);
+                         const dateStr = dateObj.toLocaleDateString('pt-BR');
+                         const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                         
+                         return (
+                           <div key={timestamp} style={{ padding: '16px', border: '1px solid var(--panel-border)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                             <div>
+                               <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Lote distribuído em {dateStr} às {timeStr}</div>
+                               <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                 {batches[timestamp].count} processos • {batches[timestamp].matriculas.size} servidores envolvidos
+                               </div>
+                             </div>
+                             <button 
+                               onClick={() => handleDeleteBatch(timestamp)}
+                               style={{ background: '#ffebee', color: '#c62828', border: '1px solid #ffcdd2', padding: '8px 16px', borderRadius: '6px', fontWeight: 600, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                             >
+                               Cancelar Lote
+                             </button>
+                           </div>
+                         );
+                      });
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
           )}
