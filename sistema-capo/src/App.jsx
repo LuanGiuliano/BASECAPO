@@ -147,6 +147,7 @@ function App() {
              const map = {};
              assignments.forEach(a => { map[a.process_id] = a.matricula; });
              setAssignedProcesses(map);
+             setOriginalAssignedProcesses(map);
           }
         } catch(e) { console.warn("Tabela process_assignments ausente ou falhou"); }
 
@@ -164,6 +165,13 @@ function App() {
           }
         } catch(e) {}
 
+        try {
+          const { data: customConfig } = await supabase.from('system_settings').select('value').eq('key', 'custom_analyzers').single();
+          if (customConfig && isMounted && Array.isArray(customConfig.value)) {
+             setCustomAnalyzers(customConfig.value);
+          }
+        } catch(e) {}
+
       } catch (err) {
         console.error("Erro ao buscar dados do Supabase:", err);
       } finally {
@@ -174,8 +182,19 @@ function App() {
     fetchData();
     return () => { isMounted = false; };
   }, [session]);
+  
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
+
+  useEffect(() => {
+    if (session) {
+      const matricula = session.user.email.split('@')[0];
+      const gestor = matricula === 'gestor' || matricula === '5991332' || session.user.user_metadata?.cargo === 'Gestor';
+      if (!gestor) {
+        setActiveTab('atividades');
+      }
+    }
+  }, [session]);
   const [filterGroup, setFilterGroup] = useState('Todos');
   const [filterStartYear, setFilterStartYear] = useState('');
   const [filterEndYear, setFilterEndYear] = useState('');
@@ -200,13 +219,24 @@ function App() {
   const [distStartYear, setDistStartYear] = useState('');
   const [distEndYear, setDistEndYear] = useState('');
   const [assignedProcesses, setAssignedProcesses] = useState({});
+  const [originalAssignedProcesses, setOriginalAssignedProcesses] = useState({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [distSelectedProcesses, setDistSelectedProcesses] = useState([]);
   const [distAnalyzerSelect, setDistAnalyzerSelect] = useState('');
+  const [autoDistributeSelected, setAutoDistributeSelected] = useState([]);
   const [itemsPerPageProcessos, setItemsPerPageProcessos] = useState(20);
   const [itemsPerPageAposentados, setItemsPerPageAposentados] = useState(20);
   const [infoModalContent, setInfoModalContent] = useState(null);
   const [dbProcessUpdates, setDbProcessUpdates] = useState([]);
   const [cadastroAberto, setCadastroAberto] = useState(false);
+  const [customAnalyzers, setCustomAnalyzers] = useState([]);
+  const [newAnalyzerName, setNewAnalyzerName] = useState('');
+  const [newAnalyzerMat, setNewAnalyzerMat] = useState('');
+  const [newAnalyzerType, setNewAnalyzerType] = useState('Servidor');
+  
+  const combinedAnalyzers = useMemo(() => {
+    return [...ACTIVE_ANALYZERS, ...customAnalyzers];
+  }, [customAnalyzers]);
 
   const matriculaAtual = session ? session.user.email.split('@')[0] : '';
   const isGestor = matriculaAtual === 'gestor' || matriculaAtual === '5991332' || session?.user?.user_metadata?.cargo === 'Gestor';
@@ -238,6 +268,15 @@ function App() {
       });
       
       if (error) throw error;
+      
+      const newAnalyzer = {
+        name: newUserNome.trim().toUpperCase(),
+        matricula: newUserMatricula.trim(),
+        tipo: newUserCargo
+      };
+      const updatedCustom = [...customAnalyzers, newAnalyzer];
+      await supabase.from('system_settings').upsert({ key: 'custom_analyzers', value: updatedCustom });
+      setCustomAnalyzers(updatedCustom);
       
       setUserCreateMsg({ type: 'success', text: `Usuário ${newUserNome} criado com sucesso!` });
       setNewUserNome('');
@@ -607,8 +646,8 @@ function App() {
     const counts = {};
     
     // Inicializar os analisadores ativos para que todos apareçam, mesmo com 0 processos
-    ACTIVE_ANALYZERS.forEach(a => {
-      counts[a.name] = { name: a.name, Distribuidos: 0, Entregues: 0 };
+    combinedAnalyzers.forEach(a => {
+      counts[a.name] = { name: a.name, matricula: a.matricula, tipo: a.tipo || a.cargo || 'Servidor', Distribuidos: 0, Entregues: 0 };
     });
 
     filteredData.forEach(d => {
@@ -616,7 +655,7 @@ function App() {
       if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return; 
       
       // Encontrar correspondência na lista de ativos
-      let activeMatch = ACTIVE_ANALYZERS.find(a => {
+      let activeMatch = combinedAnalyzers.find(a => {
         if (a.matricula) {
           const baseMat = a.matricula.split(/[-/]/)[0];
           if (instrutor.includes(baseMat)) return true;
@@ -749,7 +788,11 @@ function App() {
     return base;
   }, [metrics.cirurgicosList, distGrupo, distStartYear, distEndYear]);
 
-  const distributionAnalyzers = useMemo(() => ACTIVE_ANALYZERS.filter(a => a.matricula !== "452858-1" && a.name !== 'JOÃO JÚNIOR'), []);
+  const minhasAtividades = useMemo(() => {
+    return data.filter(p => assignedProcesses[p['Nº PAE'] || p._row_id] === matriculaAtual);
+  }, [data, assignedProcesses, matriculaAtual]);
+
+  const distributionAnalyzers = useMemo(() => combinedAnalyzers.filter(a => a.matricula !== "452858-1" && a.name !== 'JOÃO JÚNIOR'), [combinedAnalyzers]);
 
   const formatLabel = (key) => {
     const mappings = {
@@ -828,6 +871,30 @@ function App() {
         setFilterAposentadosEndYear(year);
         setPageAposentados(1);
       }
+    }
+  };
+  const handleAddAnalyzer = async (e) => {
+    e.preventDefault();
+    if (!newAnalyzerName.trim() || !newAnalyzerMat.trim()) return;
+    
+    const newAnalyzer = {
+      name: newAnalyzerName.trim().toUpperCase(),
+      matricula: newAnalyzerMat.trim(),
+      tipo: newAnalyzerType
+    };
+    
+    const updatedCustom = [...customAnalyzers, newAnalyzer];
+    
+    try {
+      const { error } = await supabase.from('system_settings').upsert({ key: 'custom_analyzers', value: updatedCustom });
+      if (error) throw error;
+      setCustomAnalyzers(updatedCustom);
+      setNewAnalyzerName('');
+      setNewAnalyzerMat('');
+      alert('Servidor adicionado com sucesso!');
+    } catch(err) {
+      console.error(err);
+      alert('Erro ao adicionar servidor. Verifique o banco de dados.');
     }
   };
 
@@ -1062,7 +1129,7 @@ function App() {
   const renderAnalyzerModal = () => {
     if (!selectedAnalyzer) return null;
     
-    const analyzerInfo = ACTIVE_ANALYZERS.find(a => a.name === selectedAnalyzer);
+    const analyzerInfo = combinedAnalyzers.find(a => a.name === selectedAnalyzer);
     
     const analyzerProcesses = filteredData.filter(d => {
       let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
@@ -1247,13 +1314,28 @@ function App() {
       </div>
     );
   };
-  const saveAssignmentsToDB = async (assignmentsArray) => {
+  const handleSaveDistribution = async () => {
+    const assignmentsArray = Object.keys(assignedProcesses).map(process_id => ({
+      process_id,
+      matricula: assignedProcesses[process_id]
+    }));
     try {
       const { error } = await supabase.from('process_assignments').upsert(assignmentsArray);
-      if (error) console.error("Erro ao salvar atribuições:", error);
+      if (error) {
+         console.error("Erro ao salvar atribuições:", error);
+         alert("Erro ao salvar a distribuição no banco de dados.");
+      } else {
+         setOriginalAssignedProcesses(assignedProcesses);
+         setHasUnsavedChanges(false);
+         alert("Distribuição salva e confirmada com sucesso! Os processos já aparecerão no painel da equipe.");
+      }
     } catch(e) {}
   };
 
+  const handleUndoDistribution = () => {
+    setAssignedProcesses(originalAssignedProcesses);
+    setHasUnsavedChanges(false);
+  };
   const handleAutoDistribute = () => {
     const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]);
     if (unassigned.length === 0) {
@@ -1261,9 +1343,11 @@ function App() {
       return;
     }
     
-    const totalAnalyzers = distributionAnalyzers.length;
+    const activeDistributionAnalyzers = distributionAnalyzers.filter(a => autoDistributeSelected.includes(a.matricula));
+    const totalAnalyzers = activeDistributionAnalyzers.length;
+    
     if (totalAnalyzers === 0) {
-      alert("Nenhum analisador disponível.");
+      alert("Selecione pelo menos um servidor nos cards para a distribuição automática.");
       return;
     }
     
@@ -1272,7 +1356,7 @@ function App() {
     
     unassigned.forEach((proc, idx) => {
        const analyzerIndex = idx % totalAnalyzers;
-       const analyzer = distributionAnalyzers[analyzerIndex];
+       const analyzer = activeDistributionAnalyzers[analyzerIndex];
        newAssignments[proc._row_id] = analyzer.matricula;
        
        // Using _row_id as process_id because we map using it in UI for now
@@ -1281,7 +1365,7 @@ function App() {
     
     setAssignedProcesses(newAssignments);
     setDistSelectedProcesses([]);
-    saveAssignmentsToDB(dbPayload);
+    setHasUnsavedChanges(true);
   };
 
   const handleManualDistribute = () => {
@@ -1304,7 +1388,7 @@ function App() {
     
     setAssignedProcesses(newAssignments);
     setDistSelectedProcesses([]);
-    saveAssignmentsToDB(dbPayload);
+    setHasUnsavedChanges(true);
   };
 
   const toggleDistProcessSelection = (id) => {
@@ -1467,7 +1551,7 @@ function App() {
         <nav className="nav-menu">
           <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' }}>Indicadores Analíticos</div>
           <a href="#" className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}><LayoutDashboard size={20} /> Dashboard Geral</a>
-          <a href="#" className={`nav-item ${activeTab === 'producao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('producao'); }}><TrendingUp size={20} /> Produção & Produtividade</a>
+          <a href="#" className={`nav-item ${activeTab === 'producao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('producao'); }}><TrendingUp size={20} /> Analistas e Produtividade</a>
           <a href="#" className={`nav-item ${activeTab === 'processos' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('processos'); }}><FileText size={20} /> Processos Ativos</a>
           <a href="#" className={`nav-item ${activeTab === 'aposentados' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('aposentados'); }}><Archive size={20} /> Arquivados & Concluídos</a>
           
@@ -1773,7 +1857,47 @@ function App() {
 
           {activeTab === 'producao' && (
             <>
-              <div className="glass-panel table-container">
+              {isGestor && (
+                <div className="glass-panel fade-in" style={{ marginBottom: '24px' }}>
+                  <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Adicionar Servidor / Estagiário
+                  </div>
+                  <p className="chart-description">Adicione um novo membro à equipe para distribuir processos a ele.</p>
+                  <form onSubmit={handleAddAnalyzer} style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end', marginTop: '16px' }}>
+                    <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Nome Completo</label>
+                      <input type="text" required value={newAnalyzerName} onChange={e => setNewAnalyzerName(e.target.value)}
+                        style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                        placeholder="Ex: MARIA JOAQUINA" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Matrícula</label>
+                      <input type="text" required value={newAnalyzerMat} onChange={e => setNewAnalyzerMat(e.target.value)}
+                        style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                        placeholder="Ex: 1234567" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Tipo</label>
+                      <select value={newAnalyzerType} onChange={e => setNewAnalyzerType(e.target.value)}
+                        style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}>
+                        <option value="Servidor">Servidor</option>
+                        <option value="Estagiário">Estagiário</option>
+                      </select>
+                    </div>
+                    <button type="submit"
+                      style={{
+                        background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
+                        color: 'white', border: 'none', padding: '12px 24px', borderRadius: '10px', 
+                        fontSize: '14px', fontWeight: 600, cursor: 'pointer', height: '45px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                      }}>
+                      Adicionar
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              <div className="glass-panel table-container fade-in">
                 <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   Lista Detalhada de Analisadores
                   <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
@@ -1795,6 +1919,8 @@ function App() {
                   <thead>
                     <tr>
                       <th>Nome do Analisador</th>
+                      <th>Matrícula</th>
+                      <th>Tipo / Cargo</th>
                       <th>Total Distribuído</th>
                       <th>Total Entregue</th>
                       <th>Progresso / Taxa de Entrega</th>
@@ -1810,6 +1936,18 @@ function App() {
                         <tr key={idx} onClick={() => setSelectedAnalyzer(analisador.name)} style={{cursor: 'pointer'}}>
                           <td>
                             <div style={{fontWeight: 600, color: 'var(--text-primary)'}}>{analisador.name}</div>
+                          </td>
+                          <td style={{color: 'var(--text-secondary)', fontSize: '14px'}}>
+                            {analisador.matricula || 'N/I'}
+                          </td>
+                          <td>
+                            <span style={{
+                              padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                              background: analisador.tipo === 'Estagiário' ? 'rgba(52, 199, 89, 0.1)' : 'rgba(0, 122, 255, 0.1)',
+                              color: analisador.tipo === 'Estagiário' ? 'var(--success-color)' : '#007aff'
+                            }}>
+                              {analisador.tipo || 'Servidor'}
+                            </span>
                           </td>
                           <td style={{fontWeight: 500, color: 'var(--text-secondary)'}}>{analisador.Distribuidos} processos</td>
                           <td style={{fontWeight: 500, color: 'var(--success-color)'}}>{analisador.Entregues} concluídos</td>
@@ -2119,7 +2257,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {distribuicaoSearch.filter(p => assignedProcesses[p['Nº PAE'] || p._row_id] === matriculaAtual).map(p => (
+                    {minhasAtividades.map(p => (
                       <tr key={p._row_id} onClick={() => handleRowClick(p)} style={{cursor: 'pointer'}}>
                          <td>{p.SERVIDOR_PADRAO}</td>
                          <td>{p['Nº PAE'] || 'N/I'}</td>
@@ -2136,7 +2274,7 @@ function App() {
                          </td>
                       </tr>
                     ))}
-                    {distribuicaoSearch.filter(p => assignedProcesses[p['Nº PAE'] || p._row_id] === matriculaAtual).length === 0 && (
+                    {minhasAtividades.length === 0 && (
                       <tr>
                         <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>Nenhum processo atribuído a você no momento.</td>
                       </tr>
@@ -2158,7 +2296,7 @@ function App() {
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'right' }}>
                     Pendentes: <strong>{distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]).length}</strong><br/>
-                    Rateio Est.: <strong>~{Math.floor(distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]).length / (distributionAnalyzers.length || 1))} p/ cada</strong>
+                    Rateio Est.: <strong>~{Math.floor(distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]).length / (autoDistributeSelected.length || 1))} p/ cada</strong>
                   </div>
                   <button onClick={handleAutoDistribute} style={{
                     background: 'var(--success-color)', color: '#fff', border: 'none', 
@@ -2176,6 +2314,23 @@ function App() {
                   </button>
                 </div>
               </div>
+
+              {hasUnsavedChanges && (
+                <div style={{ background: '#fff9e6', padding: '16px', borderRadius: '12px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #ffd54f' }}>
+                  <div style={{ color: '#856404', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Info size={20} color="#856404" />
+                    Você possui alterações na distribuição que ainda não foram salvas.
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button onClick={handleUndoDistribution} style={{ background: 'transparent', border: '1px solid #856404', color: '#856404', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+                      Desfazer
+                    </button>
+                    <button onClick={handleSaveDistribution} style={{ background: '#28a745', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>
+                      Salvar Alterações
+                    </button>
+                  </div>
+                </div>
+              )}
               
               <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div className="filter-wrapper" style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
@@ -2211,6 +2366,53 @@ function App() {
                     value={distEndYear}
                     onChange={e => setDistEndYear(e.target.value)}
                   />
+                </div>
+              </div>
+
+              <div style={{ padding: '16px', background: '#f5f5f7', borderRadius: '12px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '14px', color: 'var(--text-primary)' }}>Participantes da Distribuição</h3>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Selecione os servidores que irão receber processos nesta remessa automática.</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => setAutoDistributeSelected(distributionAnalyzers.map(a => a.matricula))} style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--panel-border)', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Selecionar Todos</button>
+                    <button onClick={() => setAutoDistributeSelected([])} style={{ fontSize: '12px', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--panel-border)', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Limpar</button>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
+                  {distributionAnalyzers.map(a => {
+                    const isSelected = autoDistributeSelected.includes(a.matricula);
+                    return (
+                      <div 
+                        key={a.matricula}
+                        onClick={() => {
+                          if (isSelected) setAutoDistributeSelected(autoDistributeSelected.filter(m => m !== a.matricula));
+                          else setAutoDistributeSelected([...autoDistributeSelected, a.matricula]);
+                        }}
+                        style={{
+                          padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          border: isSelected ? '1px solid var(--accent-color)' : '1px solid var(--panel-border)',
+                          background: isSelected ? 'rgba(0, 122, 255, 0.05)' : '#fff',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div style={{
+                          width: '18px', height: '18px', borderRadius: '4px',
+                          border: isSelected ? 'none' : '1px solid #c7c7cc',
+                          background: isSelected ? 'var(--accent-color)' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          {isSelected && <CheckCircle2 size={14} color="#fff" />}
+                        </div>
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{a.tipo || 'Servidor'} • Mat: {a.matricula || 'N/I'}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 

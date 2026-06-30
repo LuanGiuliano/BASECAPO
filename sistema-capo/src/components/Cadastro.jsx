@@ -192,7 +192,7 @@ const Cadastro = ({ onVoltar }) => {
 
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  Matrícula
+                  Sua Matrícula <span style={{ color: 'var(--danger-color)', fontSize: '11px', fontWeight: 600 }}>(Sem o vínculo)</span>
                 </label>
                 <div style={{ position: 'relative' }}>
                   <FileText size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
@@ -200,7 +200,7 @@ const Cadastro = ({ onVoltar }) => {
                     type="text" 
                     value={matricula}
                     onChange={(e) => setMatricula(e.target.value)}
-                    placeholder="Sua matrícula (somente números)"
+                    placeholder="Ex: 5123456 (Somente números)"
                     required
                     style={{
                       width: '100%', padding: '12px 12px 12px 40px',

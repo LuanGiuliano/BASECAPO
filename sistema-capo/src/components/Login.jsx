@@ -165,7 +165,7 @@ const Login = ({ onLogin }) => {
         <form onSubmit={handleLogin} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '8px' }}>
-              Matrícula
+              Matrícula <span style={{ color: 'var(--danger-color)', fontSize: '11px', fontWeight: 600 }}>(Sem o vínculo)</span>
             </label>
             <div style={{ position: 'relative' }}>
               <User size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
@@ -173,7 +173,7 @@ const Login = ({ onLogin }) => {
                 type="text" 
                 value={matricula}
                 onChange={(e) => setMatricula(e.target.value)}
-                placeholder="Digite sua matrícula"
+                placeholder="Ex: 5123456 (Somente números)"
                 required
                 style={{
                   width: '100%', padding: '12px 12px 12px 40px',
