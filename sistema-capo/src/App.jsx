@@ -186,6 +186,7 @@ function App() {
   
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
+  const [viewMode, setViewMode] = useState('gestor');
 
   useEffect(() => {
     if (session) {
@@ -243,6 +244,18 @@ function App() {
 
   const matriculaAtual = session ? session.user.email.split('@')[0] : '';
   const isGestor = matriculaAtual === 'gestor' || matriculaAtual === '5991332' || session?.user?.user_metadata?.cargo === 'Gestor';
+  const isActingAsGestor = isGestor && viewMode === 'gestor';
+
+  const toggleViewMode = () => {
+    if (viewMode === 'gestor') {
+      setViewMode('analista');
+      if (activeTab === 'distribuicao' || activeTab === 'configuracoes') {
+        setActiveTab('atividades');
+      }
+    } else {
+      setViewMode('gestor');
+    }
+  };
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -1652,7 +1665,7 @@ function App() {
           
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
 
-          {isGestor && (
+          {isActingAsGestor && (
             <>
               <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Administração</div>
               <a href="#" className={`nav-item ${activeTab === 'distribuicao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('distribuicao'); }}><Folder size={20} /> Distribuição de Passivo</a>
@@ -1666,6 +1679,12 @@ function App() {
         <header className="header">
           <div className="header-title">VISÃO GERAL DE PROCESSOS - CAPO</div>
           <div className="header-actions">
+            {isGestor && (
+              <div className="role-toggle-container" onClick={toggleViewMode} title="Alternar visão entre Gestor e Analista">
+                <div className={`role-option ${viewMode === 'gestor' ? 'active' : ''}`}>Gestor</div>
+                <div className={`role-option ${viewMode === 'analista' ? 'active' : ''}`}>Analista</div>
+              </div>
+            )}
             <Bell size={20} color="var(--text-secondary)" />
             <div className="user-profile">
               <div style={{
