@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { Landmark, Lock, User, AlertCircle, FileText, PieChart } from 'lucide-react';
 import Cadastro from './Cadastro';
+import { brasaoGreyLogo } from '../pdfLogos';
 
 const Login = ({ onLogin }) => {
   const [matricula, setMatricula] = useState('');
@@ -69,7 +70,7 @@ const Login = ({ onLogin }) => {
          
          {/* Footer */}
          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginTop: '30px', opacity: 0.6, flexWrap: 'wrap', textAlign: 'center', zIndex: 1 }}>
-           <img src="/logo_seduc_hori_bc_gray.png" alt="Seduc Logo" style={{ height: '28px', objectFit: 'contain' }} />
+           <img src={brasaoGreyLogo} alt="Brasão do Governo" style={{ height: '28px', objectFit: 'contain' }} />
            <div style={{ height: '24px', width: '1px', background: 'var(--text-secondary)' }}></div>
            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500, letterSpacing: '0.5px' }}>
              Secretaria de Educação © Todos os direitos reservados
@@ -268,7 +269,7 @@ const Login = ({ onLogin }) => {
         flexWrap: 'wrap',
         textAlign: 'center'
       }}>
-        <img src="/logo_seduc_hori_bc_gray.png" alt="Seduc Logo" style={{ height: '28px', objectFit: 'contain' }} />
+        <img src={brasaoGreyLogo} alt="Brasão do Governo" style={{ height: '28px', objectFit: 'contain' }} />
         <div style={{ height: '24px', width: '1px', background: 'var(--text-secondary)' }}></div>
         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 500, letterSpacing: '0.5px' }}>
           Secretaria de Educação © Todos os direitos reservados

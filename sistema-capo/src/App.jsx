@@ -1643,7 +1643,7 @@ function App() {
               powered by SIRA - PAE 4.0
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '4px', marginLeft: '-2px' }}>
-              <img src="/seduc-logo.png" alt="SEDUC" style={{ height: '22px', width: 'auto', objectFit: 'contain' }} />
+              <img src={brasaoGreyLogo} alt="Brasão do Governo" style={{ height: '22px', width: 'auto', objectFit: 'contain' }} />
               <div style={{ height: '18px', width: '1px', background: '#d2d2d7' }}></div>
               <img src="/logo.png" alt="SIRA" style={{ height: '22px', width: 'auto', objectFit: 'contain' }} />
             </div>
