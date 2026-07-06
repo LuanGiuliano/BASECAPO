@@ -2482,12 +2482,37 @@ function App() {
                            <span><strong>PAE:</strong> {p['Nº PAE'] || 'N/I'}</span>
                            <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
                          </div>
-                         <div className="kanban-card-actions">
-                             }}
-                           >
-                             Tramitar IGEPPS
-                           </button>
-                         </div>
+                          <div className="kanban-card-actions">
+                            <span className="status-badge andamento">{p.status_consolidado}</span>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button 
+                                className="btn-kanban-action"
+                                style={{ background: '#f5f5f7', color: 'var(--text-secondary)' }}
+                                title="Desfazer e voltar para Pendentes"
+                                onClick={async (e) => { 
+                                  e.stopPropagation(); 
+                                  if (!window.confirm("Deseja voltar este processo para a fila de Pendentes?")) return;
+                                  const p_key = String(p['Nº PAE'] || p._row_id);
+                                  const payload = { process_id: p_key, matricula: matriculaAtual, novo_status: 'Pendente Retorno', novo_pae: p['Nº PAE'] || '', observacao: p._db_observacao || '' };
+                                  try {
+                                    const { error } = await supabase.from('process_updates').upsert(payload);
+                                    if(!error) setDbProcessUpdates(prev => [...prev.filter(u => u.process_id !== p_key), payload]);
+                                  } catch (err) { console.error(err); }
+                                }}
+                              >
+                                Voltar
+                              </button>
+                              <button 
+                                className="btn-kanban-action success"
+                                title="Clique aqui para finalizar e encaminhar o processo para o IGEPPS"
+                                onClick={(e) => { 
+                                  e.stopPropagation(); handleQuickConclude(p); 
+                                }}
+                              >
+                                Tramitar IGEPPS
+                              </button>
+                            </div>
+                          </div>
                        </div>
                      ))}
                      {minhasAtividades.filter(p => String(p.status_consolidado).toLowerCase() === 'em análise').length === 0 && (
