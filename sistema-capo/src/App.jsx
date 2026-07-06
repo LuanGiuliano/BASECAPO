@@ -2574,7 +2574,7 @@ function App() {
                     <Users size={18} /> Distribuição Proporcional
                   </button>
                   <button onClick={handleDistributeByName} style={{
-                    background: 'var(--primary-color)', color: '#fff', border: 'none', 
+                    background: '#5e5ce6', color: '#fff', border: 'none', 
                     padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
                     fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px'
                   }}>
