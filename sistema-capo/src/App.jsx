@@ -865,7 +865,7 @@ function App() {
 
   const handleRowClick = (proc) => {
     setSelectedProcess(proc);
-    setUpdateStatus(proc.status_consolidado || '');
+    setUpdateStatus(''); // Por padrão, não alterar o status
     setUpdatePae(proc['Nº PAE'] || '');
     setUpdateObs(proc._db_observacao || '');
     setPreviousTab(activeTab);
@@ -929,7 +929,7 @@ function App() {
     const payload = {
        process_id: p_key,
        matricula: matriculaAtual,
-       novo_status: updateStatus,
+       novo_status: updateStatus || selectedProcess.status_consolidado,
        novo_pae: updatePae,
        observacao: updateObs
     };
@@ -1136,15 +1136,13 @@ function App() {
                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Status Consolidado</label>
                <select value={updateStatus} onChange={e => setUpdateStatus(e.target.value)}
                  style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}>
+                 <option value="">-- Manter status atual --</option>
                  <option value="Falta de Informações">Falta de Informações</option>
                  <option value="Em Análise">Em Análise</option>
                  <option value="Adequação Documental">Adequação Documental</option>
                  <option value="Tramitado ao IGEPPS">Tramitado ao IGEPPS</option>
                  <option value="PUBLICADO (Concluído)">Concluído / Publicado</option>
                  <option value="ARQUIVADO">Arquivado</option>
-                 {updateStatus && !["Falta de Informações", "Em Análise", "Adequação Documental", "Tramitado ao IGEPPS", "PUBLICADO (Concluído)", "ARQUIVADO"].includes(updateStatus) && (
-                   <option value={updateStatus}>{updateStatus} (Atual)</option>
-                 )}
                </select>
             </div>
             
@@ -2425,12 +2423,6 @@ function App() {
                            <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
                          </div>
                          <div className="kanban-card-actions">
-                           <span className="status-badge andamento">{p.status_consolidado}</span>
-                           <button 
-                             className="btn-kanban-action success"
-                             title="Clique aqui para finalizar e encaminhar o processo para o IGEPPS"
-                             onClick={(e) => { 
-                               e.stopPropagation(); handleQuickConclude(p); 
                              }}
                            >
                              Tramitar IGEPPS
