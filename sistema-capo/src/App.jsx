@@ -528,7 +528,7 @@ function App() {
 
   const metrics = useMemo(() => {
     // 1. Definição de Arquivados e Concluídos
-    const concluidoKeywords = ['CONCLUIDO', 'PUBLICADO'];
+    const concluidoKeywords = ['CONCLUIDO', 'PUBLICADO', 'TRAMITADO AO IGEPPS'];
     const arquivadoKeywords = ['ARQUIVADO'];
     
     const concluidos = filteredData.filter(d => concluidoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k)));
@@ -922,6 +922,7 @@ function App() {
   const handleUpdateProcess = async (e) => {
     e.preventDefault();
     if (!selectedProcess) return;
+    if (!window.confirm("Deseja realmente salvar estas alterações no processo?")) return;
     setIsUpdating(true);
     
     const p_key = String(selectedProcess['Nº PAE'] || selectedProcess._row_id);
@@ -953,16 +954,16 @@ function App() {
   };
 
   const handleQuickConclude = async (proc) => {
-    if (!window.confirm(`Tem certeza que deseja marcar o processo ${proc['Nº PAE'] || 'S/N'} como Concluído?`)) return;
+    if (!window.confirm(`Tem certeza que deseja tramitar o processo ${proc['Nº PAE'] || 'S/N'} para o IGEPPS?`)) return;
     
     setIsUpdating(true);
     const p_key = String(proc['Nº PAE'] || proc._row_id);
     const payload = {
        process_id: p_key,
        matricula: matriculaAtual,
-       novo_status: 'Concluído',
+       novo_status: 'Tramitado ao IGEPPS',
        novo_pae: proc['Nº PAE'] || '',
-       observacao: proc._db_observacao || 'Concluído rapidamente via painel'
+       observacao: proc._db_observacao || 'Tramitado rapidamente via painel'
     };
 
     try {
@@ -974,7 +975,7 @@ function App() {
           return [...arr, payload];
        });
        
-       alert('Processo concluído com sucesso! Contabilizado na sua produção.');
+       alert('Processo tramitado com sucesso! Contabilizado na sua produção.');
     } catch(err) {
        console.error("Erro ao concluir processo:", err);
        alert("Erro ao concluir. Tente novamente.");
@@ -1138,9 +1139,10 @@ function App() {
                  <option value="Falta de Informações">Falta de Informações</option>
                  <option value="Em Análise">Em Análise</option>
                  <option value="Adequação Documental">Adequação Documental</option>
+                 <option value="Tramitado ao IGEPPS">Tramitado ao IGEPPS</option>
                  <option value="PUBLICADO (Concluído)">Concluído / Publicado</option>
                  <option value="ARQUIVADO">Arquivado</option>
-                 {updateStatus && !["Falta de Informações", "Em Análise", "Adequação Documental", "PUBLICADO (Concluído)", "ARQUIVADO"].includes(updateStatus) && (
+                 {updateStatus && !["Falta de Informações", "Em Análise", "Adequação Documental", "Tramitado ao IGEPPS", "PUBLICADO (Concluído)", "ARQUIVADO"].includes(updateStatus) && (
                    <option value={updateStatus}>{updateStatus} (Atual)</option>
                  )}
                </select>
@@ -1160,8 +1162,9 @@ function App() {
                  placeholder="Digite os detalhes do que falta, pendências da escola ou observações adicionais..." />
             </div>
 
-            <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginTop: '8px' }}>
                <button type="submit" disabled={isUpdating}
+                 title="Clique aqui para salvar as alterações do processo no banco de dados."
                  style={{ 
                    background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
                    color: 'white', border: 'none', padding: '14px 28px', borderRadius: '10px', 
@@ -1170,6 +1173,9 @@ function App() {
                  }}>
                  {isUpdating ? 'Salvando...' : 'Salvar Alterações'}
                </button>
+               <span style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '8px', textAlign: 'right' }}>
+                 Ao clicar em Salvar, o status e as observações serão atualizados para todos.
+               </span>
             </div>
           </form>
         </div>
@@ -1453,6 +1459,8 @@ function App() {
       return;
     }
     
+    if (!window.confirm(`Tem certeza que deseja distribuir os ${unassigned.length} processos pendentes para os analisadores selecionados?`)) return;
+    
     const newAssignments = { ...assignedProcesses };
     const dbPayload = [];
     
@@ -1508,6 +1516,7 @@ function App() {
   };
 
   const generateDistributionPDF = () => {
+    if (!window.confirm("Deseja gerar o PDF com as fichas de distribuição atuais?")) return;
     const doc = new jsPDF('p', 'mm', 'a4');
     let firstPage = true;
     
@@ -1651,17 +1660,17 @@ function App() {
         </div>
         
         <nav className="nav-menu">
-          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' }}>Indicadores Analíticos</div>
+          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px', marginTop: '8px' }}>Espaço de Trabalho</div>
+          <a href="#" className={`nav-item ${activeTab === 'atividades' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('atividades'); }}><Edit3 size={20} /> Caixa de Entrada</a>
+          <a href="#" className={`nav-item ${activeTab === 'planilhao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('planilhao'); }}><Table size={20} /> Planilhão Geral</a>
+          
+          <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
+          
+          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Indicadores Analíticos</div>
           <a href="#" className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}><LayoutDashboard size={20} /> Dashboard Geral</a>
           <a href="#" className={`nav-item ${activeTab === 'producao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('producao'); }}><TrendingUp size={20} /> Analistas e Produtividade</a>
           <a href="#" className={`nav-item ${activeTab === 'processos' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('processos'); }}><FileText size={20} /> Processos Ativos</a>
           <a href="#" className={`nav-item ${activeTab === 'aposentados' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('aposentados'); }}><Archive size={20} /> Arquivados & Concluídos</a>
-          
-          <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
-          
-          <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Espaço de Trabalho</div>
-          <a href="#" className={`nav-item ${activeTab === 'atividades' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('atividades'); }}><Edit3 size={20} /> Minhas Atividades</a>
-          <a href="#" className={`nav-item ${activeTab === 'planilhao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('planilhao'); }}><Table size={20} /> Planilhão Geral</a>
           
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
 
@@ -2350,62 +2359,119 @@ function App() {
           )}
 
           {activeTab === 'atividades' && (
-             <div className="glass-panel table-container fade-in">
-               <div className="chart-header">Minhas Atividades</div>
+             <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0 40px' }}>
+               <div className="chart-header" style={{ marginBottom: '8px' }}>Caixa de Entrada</div>
                <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-                 Processos atribuídos a você para análise. Clique no processo para atualizar os dados.
+                 Processos atribuídos a você organizados por status. Clique no processo para ver os detalhes ou use as ações rápidas.
                </p>
-               <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Servidor</th>
-                      <th>PAE</th>
-                      <th>Grupo Funcional</th>
-                      <th>Status Atual</th>
-                      <th style={{ textAlign: 'right' }}>Ações Rápidas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {minhasAtividades.map(p => (
-                      <tr key={p._row_id} style={{cursor: 'default'}}>
-                         <td>{p.SERVIDOR_PADRAO}</td>
-                         <td>{p['Nº PAE'] || 'N/I'}</td>
-                         <td>{p.grupo_funcional}</td>
-                         <td>
-                           {(() => {
-                              let badgeClass = 'status-badge andamento';
-                              const s = String(p.status_consolidado).toLowerCase();
-                              if (s.includes('pend') || s.includes('adequação') || s === 'falta de informações') badgeClass = 'status-badge pendencia';
-                              if (s.includes('parado') || s.includes('atrasado') || p.dias_parado > 30) badgeClass = 'status-badge parado';
-                              if (s.includes('conclu') || s.includes('publicado') || s.includes('arquivado')) badgeClass = 'status-badge concluido';
-                              return <span className={badgeClass}>{p.status_consolidado}</span>;
-                           })()}
-                         </td>
-                         <td style={{ textAlign: 'right' }}>
-                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                             <button 
-                               onClick={(e) => { e.stopPropagation(); handleRowClick(p); }}
-                               style={{ background: 'var(--panel-border)', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-primary)' }}
-                             >
-                               <Edit3 size={14} /> Editar
-                             </button>
-                             <button 
-                               onClick={(e) => { e.stopPropagation(); handleQuickConclude(p); }}
-                               style={{ background: 'var(--success-color)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                             >
-                               <CheckCircle2 size={14} /> Concluir
-                             </button>
-                           </div>
-                         </td>
-                      </tr>
-                    ))}
-                    {minhasAtividades.length === 0 && (
-                      <tr>
-                        <td colSpan={5} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>Nenhum processo atribuído a você no momento.</td>
-                      </tr>
-                    )}
-                  </tbody>
-               </table>
+               
+               <div className="kanban-board">
+                 {/* Pendentes */}
+                 <div className="kanban-column">
+                   <div className="kanban-column-header">
+                     <span>Pendentes</span>
+                     <span className="kanban-column-count">
+                       {minhasAtividades.filter(p => !['em análise', 'tramitado ao igepps', 'concluído', 'publicado', 'arquivado'].some(k => String(p.status_consolidado).toLowerCase().includes(k))).length}
+                     </span>
+                   </div>
+                   <div className="kanban-cards">
+                     {minhasAtividades.filter(p => !['em análise', 'tramitado ao igepps', 'concluído', 'publicado', 'arquivado'].some(k => String(p.status_consolidado).toLowerCase().includes(k))).map(p => (
+                       <div className="kanban-card" key={p._row_id} onClick={() => handleRowClick(p)}>
+                         <div className="kanban-card-title">{p.SERVIDOR_PADRAO}</div>
+                         <div className="kanban-card-info">
+                           <span><strong>PAE:</strong> {p['Nº PAE'] || 'N/I'}</span>
+                           <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
+                         </div>
+                         <div className="kanban-card-actions">
+                           <span className="status-badge pendencia">{p.status_consolidado}</span>
+                           <button 
+                             className="btn-kanban-action primary"
+                             title="Clique aqui para mover este processo para a coluna Em Análise"
+                             onClick={async (e) => { 
+                               e.stopPropagation(); 
+                               if (!window.confirm("Tem certeza que deseja iniciar a análise deste processo? Ele sairá da fila de pendentes.")) return;
+                               const payload = { process_id: String(p['Nº PAE'] || p._row_id), matricula: matriculaAtual, novo_status: 'Em Análise', novo_pae: p['Nº PAE'] || '', observacao: p._db_observacao || '' };
+                               setIsUpdating(true);
+                               const { error } = await supabase.from('process_updates').upsert(payload);
+                               if(!error) setDbProcessUpdates(prev => [...prev.filter(u => u.process_id !== payload.process_id), payload]);
+                               setIsUpdating(false);
+                             }}
+                           >
+                             Iniciar Análise
+                           </button>
+                         </div>
+                       </div>
+                     ))}
+                     {minhasAtividades.filter(p => !['em análise', 'tramitado ao igepps', 'concluído', 'publicado', 'arquivado'].some(k => String(p.status_consolidado).toLowerCase().includes(k))).length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>Nenhum processo pendente.</div>
+                     )}
+                   </div>
+                 </div>
+
+                 {/* Em Análise */}
+                 <div className="kanban-column">
+                   <div className="kanban-column-header">
+                     <span>Em Análise</span>
+                     <span className="kanban-column-count">
+                       {minhasAtividades.filter(p => String(p.status_consolidado).toLowerCase() === 'em análise').length}
+                     </span>
+                   </div>
+                   <div className="kanban-cards">
+                     {minhasAtividades.filter(p => String(p.status_consolidado).toLowerCase() === 'em análise').map(p => (
+                       <div className="kanban-card" key={p._row_id} onClick={() => handleRowClick(p)}>
+                         <div className="kanban-card-title">{p.SERVIDOR_PADRAO}</div>
+                         <div className="kanban-card-info">
+                           <span><strong>PAE:</strong> {p['Nº PAE'] || 'N/I'}</span>
+                           <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
+                         </div>
+                         <div className="kanban-card-actions">
+                           <span className="status-badge andamento">{p.status_consolidado}</span>
+                           <button 
+                             className="btn-kanban-action success"
+                             title="Clique aqui para finalizar e encaminhar o processo para o IGEPPS"
+                             onClick={(e) => { 
+                               e.stopPropagation(); handleQuickConclude(p); 
+                             }}
+                           >
+                             Tramitar IGEPPS
+                           </button>
+                         </div>
+                       </div>
+                     ))}
+                     {minhasAtividades.filter(p => String(p.status_consolidado).toLowerCase() === 'em análise').length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>Nenhum processo em análise.</div>
+                     )}
+                   </div>
+                 </div>
+
+                 {/* Tramitados ao IGEPPS */}
+                 <div className="kanban-column" style={{ opacity: 0.9 }}>
+                   <div className="kanban-column-header">
+                     <span>Tramitados ao IGEPPS</span>
+                     <span className="kanban-column-count">
+                       {minhasAtividades.filter(p => ['tramitado ao igepps', 'concluído', 'publicado'].some(k => String(p.status_consolidado).toLowerCase().includes(k))).length}
+                     </span>
+                   </div>
+                   <div className="kanban-cards">
+                     {minhasAtividades.filter(p => ['tramitado ao igepps', 'concluído', 'publicado'].some(k => String(p.status_consolidado).toLowerCase().includes(k))).map(p => (
+                       <div className="kanban-card" key={p._row_id} onClick={() => handleRowClick(p)}>
+                         <div className="kanban-card-title">{p.SERVIDOR_PADRAO}</div>
+                         <div className="kanban-card-info">
+                           <span><strong>PAE:</strong> {p['Nº PAE'] || 'N/I'}</span>
+                           <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
+                         </div>
+                         <div className="kanban-card-actions">
+                           <span className="status-badge concluido">{p.status_consolidado}</span>
+                         </div>
+                       </div>
+                     ))}
+                     {minhasAtividades.filter(p => ['tramitado ao igepps', 'concluído', 'publicado'].some(k => String(p.status_consolidado).toLowerCase().includes(k))).length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>Nenhum processo concluído recentemente.</div>
+                     )}
+                   </div>
+                 </div>
+
+               </div>
              </div>
           )}
 
