@@ -1445,7 +1445,7 @@ function App() {
     setHasUnsavedChanges(false);
   };
   const handleAutoDistribute = () => {
-    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]);
+    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]);
     if (unassigned.length === 0) {
       alert("Todos os processos deste filtro já estão distribuídos.");
       return;
@@ -1467,10 +1467,10 @@ function App() {
     unassigned.forEach((proc, idx) => {
        const analyzerIndex = idx % totalAnalyzers;
        const analyzer = activeDistributionAnalyzers[analyzerIndex];
-       newAssignments[proc._row_id] = analyzer.matricula;
+       const p_key = String(proc['Nº PAE'] || proc._row_id);
+       newAssignments[p_key] = analyzer.matricula;
        
-       // Using _row_id as process_id because we map using it in UI for now
-       dbPayload.push({ process_id: proc._row_id, matricula: analyzer.matricula });
+       dbPayload.push({ process_id: p_key, matricula: analyzer.matricula });
     });
     
     setAssignedProcesses(newAssignments);
@@ -1511,7 +1511,7 @@ function App() {
     if (distSelectedProcesses.length === distribuicaoSearch.length) {
       setDistSelectedProcesses([]);
     } else {
-      setDistSelectedProcesses(distribuicaoSearch.map(p => p._row_id));
+      setDistSelectedProcesses(distribuicaoSearch.map(p => String(p['Nº PAE'] || p._row_id)));
     }
   };
 
@@ -1521,7 +1521,7 @@ function App() {
     let firstPage = true;
     
     distributionAnalyzers.forEach(analyzer => {
-      const analyzerProcs = distribuicaoSearch.filter(p => assignedProcesses[p._row_id] === analyzer.matricula);
+      const analyzerProcs = distribuicaoSearch.filter(p => assignedProcesses[String(p['Nº PAE'] || p._row_id)] === analyzer.matricula);
       if (analyzerProcs.length === 0) return;
       
       if (!firstPage) {
@@ -2486,8 +2486,8 @@ function App() {
                 </div>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                    Pendentes: <strong>{distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]).length}</strong><br/>
-                    Rateio Est.: <strong>~{Math.floor(distribuicaoSearch.filter(p => !assignedProcesses[p._row_id]).length / (autoDistributeSelected.length || 1))} p/ cada</strong>
+                    Pendentes: <strong>{distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]).length}</strong><br/>
+                    Rateio Est.: <strong>~{Math.floor(distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]).length / (autoDistributeSelected.length || 1))} p/ cada</strong>
                   </div>
                   <button onClick={handleAutoDistribute} style={{
                     background: 'var(--success-color)', color: '#fff', border: 'none', 
@@ -2657,7 +2657,8 @@ function App() {
                       <tr><td colSpan="5" style={{ textAlign: 'center', padding: '32px' }}>Nenhum processo encontrado no filtro.</td></tr>
                     ) : (
                       distribuicaoSearch.map((proc) => {
-                        const assignedMatricula = assignedProcesses[proc._row_id];
+                        const p_key = String(proc['Nº PAE'] || proc._row_id);
+                        const assignedMatricula = assignedProcesses[p_key];
                         const analyzerObj = distributionAnalyzers.find(a => a.matricula === assignedMatricula);
                         
                         return (
@@ -2665,8 +2666,8 @@ function App() {
                             <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                               <input 
                                 type="checkbox" 
-                                checked={distSelectedProcesses.includes(proc._row_id)}
-                                onChange={() => toggleDistProcessSelection(proc._row_id)}
+                                checked={distSelectedProcesses.includes(p_key)}
+                                onChange={() => toggleDistProcessSelection(p_key)}
                               />
                             </td>
                             <td>
