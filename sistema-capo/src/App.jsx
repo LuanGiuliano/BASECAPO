@@ -1476,6 +1476,66 @@ function App() {
     setHasUnsavedChanges(true);
   };
 
+  const handleDistributeByName = () => {
+    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]);
+    if (unassigned.length === 0) {
+      alert("Todos os processos deste filtro já estão distribuídos.");
+      return;
+    }
+    
+    const activeDistributionAnalyzers = distributionAnalyzers.filter(a => autoDistributeSelected.includes(a.matricula));
+    if (activeDistributionAnalyzers.length === 0) {
+      alert("Selecione pelo menos um servidor nos cards para a distribuição por nome.");
+      return;
+    }
+    
+    if (!window.confirm(`Tem certeza que deseja tentar distribuir os ${unassigned.length} processos baseando-se no nome do analista presente no histórico do processo?`)) return;
+    
+    const newAssignments = { ...assignedProcesses };
+    let matchCount = 0;
+    
+    unassigned.forEach((proc) => {
+       const p_key = String(proc['Nº PAE'] || proc._row_id);
+       
+       // Cria um texto com todos os valores do processo, ignorando os campos do servidor requerente
+       let procText = '';
+       Object.keys(proc).forEach(k => {
+           if (!['SERVIDOR_PADRAO', 'NOME DO SERVIDOR', 'CPF', 'SERVIDOR'].includes(k)) {
+               procText += ' ' + String(proc[k]).toLowerCase();
+           }
+       });
+
+       let matchedAnalyzer = null;
+       for (let analyzer of activeDistributionAnalyzers) {
+           const names = analyzer.name.split(' ');
+           const firstName = names[0].toLowerCase();
+           const firstTwoNames = names.length > 1 ? `${names[0]} ${names[1]}`.toLowerCase() : firstName;
+           
+           // Evita falsos positivos verificando o primeiro nome como palavra isolada ou os dois primeiros nomes
+           const regex = new RegExp(`\\b${firstName}\\b`, 'i');
+           if (procText.includes(firstTwoNames) || regex.test(procText)) {
+               matchedAnalyzer = analyzer;
+               break; // Atribui ao primeiro analista que der match
+           }
+       }
+       
+       if (matchedAnalyzer) {
+           newAssignments[p_key] = matchedAnalyzer.matricula;
+           matchCount++;
+       }
+    });
+    
+    if (matchCount === 0) {
+        alert("Nenhum processo pôde ser distribuído pelo nome (não foram encontrados nomes dos analistas na base dos processos pendentes).");
+        return;
+    }
+    
+    setAssignedProcesses(newAssignments);
+    setDistSelectedProcesses([]);
+    setHasUnsavedChanges(true);
+    alert(`${matchCount} processos foram distribuídos automaticamente pelo nome do analista! Lembre-se de clicar em "Salvar Distribuição" para persistir.`);
+  };
+
   const handleManualDistribute = () => {
     if (!distAnalyzerSelect) {
       alert("Selecione um analisador primeiro.");
@@ -2486,7 +2546,14 @@ function App() {
                     padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
                     fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px'
                   }}>
-                    <Users size={18} /> Distribuição Automática
+                    <Users size={18} /> Distribuição Proporcional
+                  </button>
+                  <button onClick={handleDistributeByName} style={{
+                    background: 'var(--primary-color)', color: '#fff', border: 'none', 
+                    padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+                    fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px'
+                  }}>
+                    <Users size={18} /> Distribuir p/ Nome
                   </button>
                   <button onClick={generateDistributionPDF} style={{
                     background: 'var(--accent-color)', color: '#fff', border: 'none', 
