@@ -67,6 +67,7 @@ const ACTIVE_ANALYZERS = [
   { name: "LOURENÇO SANCHES DE MATOS JUNIOR", matricula: "5791316-2" },
   { name: "MARIA FERNANDA MARTINS DE SOUSA", matricula: "5188903-1" },
   { name: "SILVIO FERREIRA RIBEIRO JUNIOR", matricula: "5891279-1" },
+  { name: "LUAN GIULIANO (TESTE)", matricula: "5991332" }
   { name: "VICTOR MATEUS DINIZ PEREIRA", matricula: "57212515-1" },
   { name: "ANTONIO LUIZ LEAL MOREIRA", matricula: "5791430-2" },
   { name: "ANDRÉ PEREIRA CHAVES", matricula: "57210656-1" },
