@@ -706,28 +706,7 @@ function App() {
         activeMatch = combinedAnalyzers.find(a => a.matricula && String(a.matricula).startsWith(targetMatricula));
       }
       
-      // Fallback para a coluna INSTRUTOR_PADRAO do banco de dados antigo
-      if (!activeMatch) {
-        let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
-        if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return; 
-        
-        // Encontrar correspondência na lista de ativos
-        activeMatch = combinedAnalyzers.find(a => {
-          if (a.matricula) {
-            const baseMat = a.matricula.split(/[-/]/)[0];
-            if (instrutor.includes(baseMat)) return true;
-          }
-          
-          const uA = a.name.toUpperCase();
-          if (uA === instrutor) return true;
-          
-          // Verifica se o nome antes do traço/matrícula é igual ao primeiro nome ou contém
-          let justName = instrutor.split('-')[0].trim();
-          if (justName.length > 3 && (uA.includes(justName) || justName.includes(uA))) return true;
-          
-          return false;
-        });
-      }
+
       
       if (!activeMatch) return; // Excluir analisadores que não estão mais na CAPO
       
@@ -1240,22 +1219,6 @@ function App() {
          }
          return false; // Se foi atribuído a outro via sistema, ignorar o INSTRUTOR_PADRAO
       }
-
-      // 2. Fallback: INSTRUTOR_PADRAO
-      let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
-      if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return false; 
-      
-      if (analyzerInfo && analyzerInfo.matricula) {
-        const baseMat = analyzerInfo.matricula.split(/[-/]/)[0];
-        if (instrutor.includes(baseMat)) return true;
-      }
-      
-      const uA = selectedAnalyzer.toUpperCase();
-      if (uA === instrutor) return true;
-      
-      let justName = instrutor.split('-')[0].trim();
-      if (justName.length > 3 && (uA.includes(justName) || justName.includes(uA))) return true;
-      
       return false;
     });
 
