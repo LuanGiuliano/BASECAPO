@@ -484,6 +484,7 @@ function App() {
       return {
         ...item,
         _row_id: String(idx),
+        _original_key: paeOrIdx,
         status_normal,
         status_consolidado,
         grupo_funcional,
@@ -501,8 +502,8 @@ function App() {
   const filteredData = useMemo(() => {
     return data.filter(item => {
       if (!isGestor) {
-        const paeOrIdx = String(item['Nº PAE'] || item._row_id);
-        const assigned = assignedProcesses[paeOrIdx];
+        const keyToUse = item._original_key || String(item['Nº PAE'] || item._row_id);
+        const assigned = assignedProcesses[keyToUse];
         if (!assigned || String(assigned).split('-')[0] !== String(matriculaAtual).split('-')[0]) {
            return false;
         }
@@ -807,7 +808,7 @@ function App() {
 
   const minhasAtividades = useMemo(() => {
     return data.filter(p => {
-      const assigned = assignedProcesses[p['Nº PAE'] || p._row_id];
+      const assigned = assignedProcesses[p._original_key || p['Nº PAE'] || p._row_id];
       if (!assigned) return false;
       return String(assigned).split('-')[0] === String(matriculaAtual).split('-')[0];
     });
@@ -925,7 +926,7 @@ function App() {
     if (!window.confirm("Deseja realmente salvar estas alterações no processo?")) return;
     setIsUpdating(true);
     
-    const p_key = String(selectedProcess['Nº PAE'] || selectedProcess._row_id);
+    const p_key = String(selectedProcess._original_key || selectedProcess['Nº PAE'] || selectedProcess._row_id);
     const payload = {
        process_id: p_key,
        matricula: matriculaAtual,
@@ -957,7 +958,7 @@ function App() {
     if (!window.confirm(`Tem certeza que deseja tramitar o processo ${proc['Nº PAE'] || 'S/N'} para o IGEPPS?`)) return;
     
     setIsUpdating(true);
-    const p_key = String(proc['Nº PAE'] || proc._row_id);
+    const p_key = String(proc._original_key || proc['Nº PAE'] || proc._row_id);
     const payload = {
        process_id: p_key,
        matricula: matriculaAtual,
@@ -1443,7 +1444,7 @@ function App() {
     setHasUnsavedChanges(false);
   };
   const handleAutoDistribute = () => {
-    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]);
+    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[p._original_key || String(p['Nº PAE'] || p._row_id)]);
     if (unassigned.length === 0) {
       alert("Todos os processos deste filtro já estão distribuídos.");
       return;
@@ -1465,7 +1466,7 @@ function App() {
     unassigned.forEach((proc, idx) => {
        const analyzerIndex = idx % totalAnalyzers;
        const analyzer = activeDistributionAnalyzers[analyzerIndex];
-       const p_key = String(proc['Nº PAE'] || proc._row_id);
+       const p_key = String(proc._original_key || proc['Nº PAE'] || proc._row_id);
        newAssignments[p_key] = analyzer.matricula;
        
        dbPayload.push({ process_id: p_key, matricula: analyzer.matricula });
@@ -1477,7 +1478,7 @@ function App() {
   };
 
   const handleDistributeByName = () => {
-    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]);
+    const unassigned = distribuicaoSearch.filter(p => !assignedProcesses[p._original_key || String(p['Nº PAE'] || p._row_id)]);
     if (unassigned.length === 0) {
       alert("Todos os processos deste filtro já estão distribuídos.");
       return;
@@ -1495,7 +1496,7 @@ function App() {
     let matchCount = 0;
     
     unassigned.forEach((proc) => {
-       const p_key = String(proc['Nº PAE'] || proc._row_id);
+       const p_key = String(proc._original_key || proc['Nº PAE'] || proc._row_id);
        
        // Cria um texto com todos os valores do processo, ignorando os campos do servidor requerente
        let procText = '';
@@ -1579,7 +1580,7 @@ function App() {
     let firstPage = true;
     
     distributionAnalyzers.forEach(analyzer => {
-      const analyzerProcs = distribuicaoSearch.filter(p => assignedProcesses[String(p['Nº PAE'] || p._row_id)] === analyzer.matricula);
+      const analyzerProcs = distribuicaoSearch.filter(p => assignedProcesses[p._original_key || String(p['Nº PAE'] || p._row_id)] === analyzer.matricula);
       if (analyzerProcs.length === 0) return;
       
       if (!firstPage) {
@@ -2448,7 +2449,7 @@ function App() {
                              onClick={async (e) => { 
                                e.stopPropagation(); 
                                if (!window.confirm("Tem certeza que deseja iniciar a análise deste processo? Ele sairá da fila de pendentes.")) return;
-                               const payload = { process_id: String(p['Nº PAE'] || p._row_id), matricula: matriculaAtual, novo_status: 'Em Análise', novo_pae: p['Nº PAE'] || '', observacao: p._db_observacao || '' };
+                               const payload = { process_id: String(p._original_key || p['Nº PAE'] || p._row_id), matricula: matriculaAtual, novo_status: 'Em Análise', novo_pae: p['Nº PAE'] || '', observacao: p._db_observacao || '' };
                                setIsUpdating(true);
                                const { error } = await supabase.from('process_updates').upsert(payload);
                                if(!error) setDbProcessUpdates(prev => [...prev.filter(u => u.process_id !== payload.process_id), payload]);
@@ -2491,9 +2492,9 @@ function App() {
                                 title="Desfazer e voltar para Pendentes"
                                 onClick={async (e) => { 
                                   e.stopPropagation(); 
-                                  if (!window.confirm("Deseja voltar este processo para a fila de Pendentes?")) return;
-                                  const p_key = String(p['Nº PAE'] || p._row_id);
-                                  const payload = { process_id: p_key, matricula: matriculaAtual, novo_status: 'Pendente Retorno', novo_pae: p['Nº PAE'] || '', observacao: p._db_observacao || '' };
+                                 if (!window.confirm("Deseja voltar este processo para a fila de Pendentes?")) return;
+                                 const p_key = String(p._original_key || p['Nº PAE'] || p._row_id);
+                                 const payload = { process_id: p_key, matricula: matriculaAtual, novo_status: 'Pendente Retorno', novo_pae: p['Nº PAE'] || '', observacao: p._db_observacao || '' };
                                   try {
                                     const { error } = await supabase.from('process_updates').upsert(payload);
                                     if(!error) setDbProcessUpdates(prev => [...prev.filter(u => u.process_id !== p_key), payload]);
@@ -2563,8 +2564,8 @@ function App() {
                 </div>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                    Pendentes: <strong>{distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]).length}</strong><br/>
-                    Rateio Est.: <strong>~{Math.floor(distribuicaoSearch.filter(p => !assignedProcesses[String(p['Nº PAE'] || p._row_id)]).length / (autoDistributeSelected.length || 1))} p/ cada</strong>
+                    Pendentes: <strong>{distribuicaoSearch.filter(p => !assignedProcesses[p._original_key || String(p['Nº PAE'] || p._row_id)]).length}</strong><br/>
+                    Rateio Est.: <strong>~{Math.floor(distribuicaoSearch.filter(p => !assignedProcesses[p._original_key || String(p['Nº PAE'] || p._row_id)]).length / (autoDistributeSelected.length || 1))} p/ cada</strong>
                   </div>
                   <button onClick={handleAutoDistribute} style={{
                     background: 'var(--success-color)', color: '#fff', border: 'none', 
@@ -2741,7 +2742,7 @@ function App() {
                       <tr><td colSpan="5" style={{ textAlign: 'center', padding: '32px' }}>Nenhum processo encontrado no filtro.</td></tr>
                     ) : (
                       distribuicaoSearch.map((proc) => {
-                        const p_key = String(proc['Nº PAE'] || proc._row_id);
+                        const p_key = proc._original_key || String(proc['Nº PAE'] || proc._row_id);
                         const assignedMatricula = assignedProcesses[p_key];
                         const analyzerObj = distributionAnalyzers.find(a => a.matricula === assignedMatricula);
                         
