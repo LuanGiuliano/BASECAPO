@@ -734,7 +734,7 @@ function App() {
       counts[activeMatch.name].Distribuidos += 1;
       
       const s = String(d.status_consolidado).toUpperCase();
-      if (s.includes('CONCLUIDO') || s.includes('PUBLICADO') || s.includes('ARQUIVADO')) {
+      if (s.includes('CONCLUIDO') || s.includes('PUBLICADO') || s.includes('ARQUIVADO') || s.includes('TRAMITADO AO IGEPPS')) {
         counts[activeMatch.name].Entregues += 1;
       }
     });
@@ -1067,7 +1067,7 @@ function App() {
         });
       }
       
-      const isConcluido = String(p.status_consolidado).toUpperCase().includes('CONCLUIDO') || String(p.status_consolidado).toUpperCase().includes('ARQUIVADO');
+      const isConcluido = String(p.status_consolidado).toUpperCase().includes('CONCLUIDO') || String(p.status_consolidado).toUpperCase().includes('ARQUIVADO') || String(p.status_consolidado).toUpperCase().includes('TRAMITADO AO IGEPPS');
       
       events.push({
         title: isConcluido ? 'Processo Finalizado / Arquivado' : 'Status Atual / Última Movimentação',
@@ -1306,7 +1306,7 @@ function App() {
     
     const entregues = analyzerProcesses.filter(d => {
       const s = String(d.status_consolidado).toUpperCase();
-      return s.includes('CONCLUIDO') || s.includes('PUBLICADO') || s.includes('ARQUIVADO');
+      return s.includes('CONCLUIDO') || s.includes('PUBLICADO') || s.includes('ARQUIVADO') || s.includes('TRAMITADO AO IGEPPS');
     }).length;
     
     const distribuidos = analyzerProcesses.length;
