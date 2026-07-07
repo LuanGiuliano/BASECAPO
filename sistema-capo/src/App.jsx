@@ -198,6 +198,16 @@ function App() {
       }
     }
   }, [session]);
+
+  useEffect(() => {
+    const handlePopState = (e) => {
+      if (activeTab === 'processoDetalhe') {
+        setActiveTab(previousTab);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeTab, previousTab]);
   const [filterGroup, setFilterGroup] = useState('Todos');
   const [filterStartYear, setFilterStartYear] = useState('');
   const [filterEndYear, setFilterEndYear] = useState('');
@@ -886,6 +896,7 @@ function App() {
     setUpdateObs(proc._db_observacao || '');
     setPreviousTab(activeTab);
     setActiveTab('processoDetalhe');
+    window.history.pushState({ isModal: true }, '');
   };
 
   const handleTimelineClick = (data) => {
@@ -960,7 +971,7 @@ function App() {
        });
        
        alert('Processo atualizado com sucesso!');
-       setActiveTab(previousTab);
+       window.history.back();
     } catch(err) {
        console.error("Erro ao atualizar processo:", err);
        alert("Erro ao atualizar processo. Tente novamente.");
@@ -1058,7 +1069,7 @@ function App() {
     return (
       <div className="process-details-container">
         <div className="process-details-header">
-          <button className="btn-back" onClick={() => setActiveTab(previousTab)}>
+          <button type="button" className="btn-back" onClick={() => window.history.back()}>
             <ArrowLeft size={18} /> Voltar para a Lista
           </button>
           <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.5px' }}>
