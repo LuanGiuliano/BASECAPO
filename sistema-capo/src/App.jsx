@@ -477,23 +477,30 @@ function App() {
          ano_entrada = String(p);
       }
 
-      // Aplica as atualizações do banco de dados (se houver)
+      // Aplica as atualizações do banco de dados sem mutar o objeto original (rawData)
       const paeOrIdx = String(item['Nº PAE'] || idx);
       const update = dbProcessUpdates.find(u => u.process_id === paeOrIdx || u.process_id === String(idx));
       
+      let currentPae = item['Nº PAE'];
+      let currentObs = item._db_observacao;
+
       if (update) {
          if (update.novo_status) {
             status_normal = update.novo_status;
             status_consolidado = update.novo_status;
          }
-         if (update.novo_pae) {
-            item['Nº PAE'] = update.novo_pae;
+         if (update.novo_pae !== undefined) {
+            currentPae = update.novo_pae;
          }
-         item._db_observacao = update.observacao;
+         if (update.observacao !== undefined) {
+            currentObs = update.observacao;
+         }
       }
 
       return {
         ...item,
+        'Nº PAE': currentPae,
+        _db_observacao: currentObs,
         _row_id: String(idx),
         _original_key: paeOrIdx,
         status_normal,
