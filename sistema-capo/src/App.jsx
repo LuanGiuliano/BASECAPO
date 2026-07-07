@@ -1337,7 +1337,7 @@ function App() {
       }
 
       doc.setFontSize(12);
-      doc.text(`Total Mostrado: ${distribuidos} | Entregues: ${entregues}`, 14, yOffset);
+      doc.text(`Total Mostrado: ${distribuidos} | Tramitados ao IGEPPS: ${entregues}`, 14, yOffset);
       doc.text(`Data de Emissão: ${new Date().toLocaleDateString('pt-BR')}`, 14, yOffset + 6);
 
       const tableColumn = ["Servidor", "Protocolo/PAE", "Status", "Dias Parado"];
@@ -1367,7 +1367,7 @@ function App() {
 
     const perc = distribuidos > 0 ? Math.round((entregues / distribuidos) * 100) : 0;
     const pieData = [
-      { name: 'Entregues', value: entregues, fill: 'var(--success-color)' },
+      { name: 'Tramitados ao IGEPPS', value: entregues, fill: 'var(--success-color)' },
       { name: 'Pendentes', value: distribuidos - entregues, fill: '#e5e5ea' }
     ];
 
@@ -1460,7 +1460,7 @@ function App() {
                     <div className="stat-icon green" style={{ width: 40, height: 40, fontSize: 18 }}><CheckCircle2 /></div>
                     <div className="stat-details">
                       <span className="stat-value" style={{ fontSize: 20 }}>{entregues}</span>
-                      <span className="stat-label" style={{ fontSize: 12 }}>Entregues</span>
+                      <span className="stat-label" style={{ fontSize: 12 }}>Tramitados ao IGEPPS</span>
                     </div>
                   </div>
                 </div>
@@ -1883,7 +1883,7 @@ function App() {
           <a href="#" className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}><LayoutDashboard size={20} /> Dashboard Geral</a>
           <a href="#" className={`nav-item ${activeTab === 'producao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('producao'); }}><TrendingUp size={20} /> Analistas e Produtividade</a>
           <a href="#" className={`nav-item ${activeTab === 'processos' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('processos'); }}><FileText size={20} /> Processos Ativos</a>
-          <a href="#" className={`nav-item ${activeTab === 'aposentados' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('aposentados'); }}><Archive size={20} /> Arquivados & Concluídos</a>
+          <a href="#" className={`nav-item ${activeTab === 'aposentados' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('aposentados'); }}><Archive size={20} /> Arquivados & Tramitados ao IGEPPS</a>
           
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
 
@@ -1972,7 +1972,7 @@ function App() {
                     legends: [
                       { color: 'var(--accent-color)', label: 'Ativos (Em andamento)', desc: 'Processos em trâmite normal. Inclui todo processo que não esteja concluído nem arquivado.' },
                       { color: 'var(--warning-color)', label: 'Volume Cirúrgico', desc: 'Subconjunto crítico. Reúne processos com qualquer tipo de pendência, atraso, adequação ou inativos por mais de 30 dias.' },
-                      { color: 'var(--success-color)', label: 'Arquivados & Concluídos', desc: 'Processos finalizados (publicados, cancelados, extintos). Eles NUNCA se misturam com os Ativos.' }
+                      { color: 'var(--success-color)', label: 'Arquivados & Tramitados ao IGEPPS', desc: 'Processos finalizados (publicados, cancelados, extintos). Eles NUNCA se misturam com os Ativos.' }
                     ]
                   });
                 }} />
@@ -2006,7 +2006,7 @@ function App() {
                         e.stopPropagation();
                         setInfoModalContent({
                           title: 'Total de Ativos (Geral)',
-                          description: 'Este indicador mostra a totalidade de processos ativos no sistema (que não estão concluídos nem arquivados).',
+                          description: 'Este indicador mostra a totalidade de processos ativos no sistema (que não estão tramitados ao IGEPPS nem arquivados).',
                           legends: [
                             { color: 'var(--accent-color)', label: 'Inclui', desc: 'Processos na CAPO, processos devolvidos para as DREs e processos no IGEPES.' },
                             { color: 'var(--danger-color)', label: 'Exclui', desc: 'Apenas Processos Finalizados ou Arquivados.' }
@@ -2068,13 +2068,13 @@ function App() {
                           title: 'Finalizados / Arquivados',
                           description: 'Representa a totalidade de processos que já encerraram o seu ciclo de vida dentro da coordenação e não requerem mais ações.',
                           legends: [
-                            { color: 'var(--success-color)', label: 'Concluídos e Publicados', desc: 'Processos que tiveram suas portarias publicadas no Diário Oficial.' },
+                            { color: 'var(--success-color)', label: 'Tramitados ao IGEPPS e Publicados', desc: 'Processos que tiveram suas portarias publicadas no Diário Oficial.' },
                             { color: '#86868b', label: 'Arquivados', desc: 'Processos baixados definitivamente.' }
                           ]
                         });
                       }} />
                     </div>
-                    <span className="stat-description">Processos concluídos ou extintos.</span>
+                    <span className="stat-description">Processos tramitados ao IGEPPS ou extintos.</span>
                   </div>
                 </div>
               </div>
@@ -2160,7 +2160,7 @@ function App() {
                       e.stopPropagation();
                       setInfoModalContent({
                         title: 'Volume de Processos por Setor',
-                        description: 'Este gráfico ilustra a distribuição física ou sistêmica atual de todos os processos ATIVOS da base (excluindo os já concluídos e arquivados).',
+                        description: 'Este gráfico ilustra a distribuição física ou sistêmica atual de todos os processos ATIVOS da base (excluindo os já tramitados ao IGEPPS e arquivados).',
                         legends: [
                           { color: 'var(--accent-color)', label: 'Eixo Y (Setores)', desc: 'Nome da DRE, URE ou da própria CAPO.' },
                           { color: 'var(--text-primary)', label: 'Eixo X (Quantidade)', desc: 'Número total de processos ativos alocados naquele setor.' }
@@ -2237,8 +2237,8 @@ function App() {
                       description: 'Métrica de produtividade individual por analisador na coordenação.',
                       legends: [
                         { color: 'var(--text-primary)', label: 'Total Distribuído', desc: 'Soma de todos os processos que em algum momento foram direcionados ou estão em posse do analisador.' },
-                        { color: 'var(--success-color)', label: 'Total Entregue', desc: 'Processos que o analisador finalizou (ex: status Concluído, Publicado ou Arquivado).' },
-                        { color: 'var(--success-color)', label: 'Taxa de Entrega', desc: 'O percentual de conclusão baseado na relação entre distribuídos e entregues.' }
+                        { color: 'var(--success-color)', label: 'Total Tramitado ao IGEPPS', desc: 'Processos que o analisador finalizou (ex: status Tramitado ao IGEPPS, Publicado ou Arquivado).' },
+                        { color: 'var(--success-color)', label: 'Taxa de Tramitação', desc: 'O percentual de conclusão baseado na relação entre distribuídos e tramitados.' }
                       ]
                     });
                   }} />
@@ -2252,8 +2252,8 @@ function App() {
                       <th>Matrícula</th>
                       <th>Tipo / Cargo</th>
                       <th>Total Distribuído</th>
-                      <th>Total Entregue</th>
-                      <th>Progresso / Taxa de Entrega</th>
+                      <th>Total Tramitado ao IGEPPS</th>
+                      <th>Progresso / Taxa de Tramitação</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2280,7 +2280,7 @@ function App() {
                             </span>
                           </td>
                           <td style={{fontWeight: 500, color: 'var(--text-secondary)'}}>{analisador.Distribuidos} processos</td>
-                          <td style={{fontWeight: 500, color: 'var(--success-color)'}}>{analisador.Entregues} concluídos</td>
+                          <td style={{fontWeight: 500, color: 'var(--success-color)'}}>{analisador.Entregues} tramitados</td>
                           <td>
                             <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
                               <div style={{width: '120px', height: '8px', background: '#e5e5ea', borderRadius: '4px'}}>
@@ -2479,7 +2479,7 @@ function App() {
                         title: 'Série Histórica de Conclusões',
                         description: 'Visão cronológica dos processos finalizados, baseada no ano de publicação no Diário Oficial. Clique nos pontos para filtrar a tabela.',
                         legends: [
-                          { color: 'var(--success-color)', label: 'Eixo Y (Volume)', desc: 'Quantidade de processos publicados/concluídos naquele ano.' }
+                          { color: 'var(--success-color)', label: 'Eixo Y (Volume)', desc: 'Quantidade de processos publicados/tramitados ao IGEPPS naquele ano.' }
                         ]
                       });
                     }} />
@@ -2490,7 +2490,7 @@ function App() {
                     )}
                   </div>
                   <div className="chart-description">
-                    Este gráfico agrupa os processos concluídos e arquivados pelo <strong>Ano de Publicação</strong> no Diário Oficial. Clique num ano para filtrar a tabela abaixo.
+                    Este gráfico agrupa os processos tramitados ao IGEPPS e arquivados pelo <strong>Ano de Publicação</strong> no Diário Oficial. Clique num ano para filtrar a tabela abaixo.
                   </div>
                   <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
                     <ResponsiveContainer>
