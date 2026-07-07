@@ -669,25 +669,39 @@ function App() {
     });
 
     filteredData.forEach(d => {
-      let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
-      if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return; 
+      const p_key = d._original_key || String(d['Nº PAE'] || d._row_id);
+      const assignedMatricula = assignedProcesses[p_key];
       
-      // Encontrar correspondência na lista de ativos
-      let activeMatch = combinedAnalyzers.find(a => {
-        if (a.matricula) {
-          const baseMat = a.matricula.split(/[-/]/)[0];
-          if (instrutor.includes(baseMat)) return true;
-        }
+      let activeMatch = null;
+      
+      // Tentar associar pela distribuição interna primeiro
+      if (assignedMatricula) {
+        const targetMatricula = String(assignedMatricula).split(/[-/]/)[0];
+        activeMatch = combinedAnalyzers.find(a => a.matricula && String(a.matricula).startsWith(targetMatricula));
+      }
+      
+      // Fallback para a coluna INSTRUTOR_PADRAO do banco de dados antigo
+      if (!activeMatch) {
+        let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
+        if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return; 
         
-        const uA = a.name.toUpperCase();
-        if (uA === instrutor) return true;
-        
-        // Verifica se o nome antes do traço/matrícula é igual ao primeiro nome ou contém
-        let justName = instrutor.split('-')[0].trim();
-        if (justName.length > 3 && (uA.includes(justName) || justName.includes(uA))) return true;
-        
-        return false;
-      });
+        // Encontrar correspondência na lista de ativos
+        activeMatch = combinedAnalyzers.find(a => {
+          if (a.matricula) {
+            const baseMat = a.matricula.split(/[-/]/)[0];
+            if (instrutor.includes(baseMat)) return true;
+          }
+          
+          const uA = a.name.toUpperCase();
+          if (uA === instrutor) return true;
+          
+          // Verifica se o nome antes do traço/matrícula é igual ao primeiro nome ou contém
+          let justName = instrutor.split('-')[0].trim();
+          if (justName.length > 3 && (uA.includes(justName) || justName.includes(uA))) return true;
+          
+          return false;
+        });
+      }
       
       if (!activeMatch) return; // Excluir analisadores que não estão mais na CAPO
       
@@ -699,7 +713,7 @@ function App() {
       }
     });
     return Object.values(counts).sort((a,b) => b.Distribuidos - a.Distribuidos);
-  }, [filteredData]);
+  }, [filteredData, combinedAnalyzers, assignedProcesses]);
 
   const uniqueYears = useMemo(() => {
     const years = [...new Set(data.map(d => String(d.ano_entrada)))].filter(y => y !== 'N/I' && y !== 'nan').sort();
