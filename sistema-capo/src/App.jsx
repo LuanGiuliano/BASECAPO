@@ -227,6 +227,9 @@ function App() {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const [selectedAnalyzer, setSelectedAnalyzer] = useState(null);
+  const [analyzerSearch, setAnalyzerSearch] = useState('');
+  const [analyzerStartDate, setAnalyzerStartDate] = useState('');
+  const [analyzerEndDate, setAnalyzerEndDate] = useState('');
   const [quickFilter, setQuickFilter] = useState('Limpos');
   const [distGrupo, setDistGrupo] = useState('Todos');
   const [distStartYear, setDistStartYear] = useState('');
@@ -483,6 +486,7 @@ function App() {
       
       let currentPae = item['Nº PAE'];
       let currentObs = item._db_observacao;
+      let updatedAt = null;
 
       if (update) {
          if (update.novo_status) {
@@ -495,12 +499,16 @@ function App() {
          if (update.observacao !== undefined) {
             currentObs = update.observacao;
          }
+         if (update.created_at) {
+            updatedAt = update.created_at;
+         }
       }
 
       return {
         ...item,
         'Nº PAE': currentPae,
         _db_observacao: currentObs,
+        _updated_at: updatedAt,
         _row_id: String(idx),
         _original_key: paeOrIdx,
         status_normal,
@@ -1221,7 +1229,19 @@ function App() {
     
     const analyzerInfo = combinedAnalyzers.find(a => a.name === selectedAnalyzer);
     
-    const analyzerProcesses = filteredData.filter(d => {
+    const baseAnalyzerProcesses = filteredData.filter(d => {
+      // 1. Verificar se está na distribuição do sistema
+      const p_key = d._original_key || String(d['Nº PAE'] || d._row_id);
+      if (assignedProcesses[p_key]) {
+         const assignedMat = String(assignedProcesses[p_key]).split(/[-/]/)[0];
+         if (analyzerInfo && analyzerInfo.matricula) {
+             const baseMat = String(analyzerInfo.matricula).split(/[-/]/)[0];
+             if (assignedMat === baseMat) return true;
+         }
+         return false; // Se foi atribuído a outro via sistema, ignorar o INSTRUTOR_PADRAO
+      }
+
+      // 2. Fallback: INSTRUTOR_PADRAO
       let instrutor = String(d.INSTRUTOR_PADRAO).trim().toUpperCase();
       if (!instrutor || instrutor === 'N/I' || instrutor === 'NAN') return false; 
       
@@ -1237,6 +1257,51 @@ function App() {
       if (justName.length > 3 && (uA.includes(justName) || justName.includes(uA))) return true;
       
       return false;
+    });
+
+    const analyzerProcesses = baseAnalyzerProcesses.filter(d => {
+      // Aplicar filtro de texto (PAE, Nome do Servidor, Status)
+      if (analyzerSearch) {
+        const term = analyzerSearch.toLowerCase();
+        const serv = String(d.SERVIDOR_PADRAO || '').toLowerCase();
+        const pae = String(d['Nº PAE'] || '').toLowerCase();
+        const stat = String(d.status_consolidado || '').toLowerCase();
+        if (!serv.includes(term) && !pae.includes(term) && !stat.includes(term)) return false;
+      }
+
+      // Aplicar filtro de período (usa _updated_at se houver, senão tenta o ano_publicacao)
+      if (analyzerStartDate || analyzerEndDate) {
+        let processDateStr = d._updated_at; // ISO date string from Supabase
+        let processDate = null;
+
+        if (processDateStr) {
+           processDate = new Date(processDateStr);
+        } else if (d.DATA_PUB_PADRAO && String(d.DATA_PUB_PADRAO).trim() !== 'nan') {
+           let partes = String(d.DATA_PUB_PADRAO).split('/');
+           if(partes.length === 3) {
+             processDate = new Date(`${partes[2]}-${partes[1]}-${partes[0]}T12:00:00Z`);
+           } else if (d.ano_publicacao !== 'N/I') {
+             processDate = new Date(`${d.ano_publicacao}-01-01T12:00:00Z`);
+           }
+        } else if (d.ano_publicacao !== 'N/I') {
+           processDate = new Date(`${d.ano_publicacao}-01-01T12:00:00Z`);
+        }
+
+        if (processDate && !isNaN(processDate.getTime())) {
+          if (analyzerStartDate) {
+            const start = new Date(`${analyzerStartDate}T00:00:00`);
+            if (processDate < start) return false;
+          }
+          if (analyzerEndDate) {
+            const end = new Date(`${analyzerEndDate}T23:59:59`);
+            if (processDate > end) return false;
+          }
+        } else {
+          return false; // Ignora processos sem data válida no filtro
+        }
+      }
+
+      return true;
     });
     
     const entregues = analyzerProcesses.filter(d => {
@@ -1256,9 +1321,24 @@ function App() {
       doc.setFontSize(12);
       doc.setTextColor(134, 134, 139);
       doc.text(`Analisador: ${selectedAnalyzer}`, 14, 32);
-      doc.text(`Total Distribuído: ${distribuidos}`, 14, 38);
-      doc.text(`Total Entregue: ${entregues}`, 14, 44);
-      doc.text(`Data de Emissão: ${new Date().toLocaleDateString('pt-BR')}`, 14, 50);
+      
+      let yOffset = 38;
+      if (analyzerStartDate || analyzerEndDate) {
+          doc.setFontSize(10);
+          const s = analyzerStartDate ? new Date(`${analyzerStartDate}T12:00:00Z`).toLocaleDateString('pt-BR') : 'Início';
+          const e = analyzerEndDate ? new Date(`${analyzerEndDate}T12:00:00Z`).toLocaleDateString('pt-BR') : 'Fim';
+          doc.text(`Período: ${s} até ${e}`, 14, yOffset);
+          yOffset += 6;
+      }
+      if (analyzerSearch) {
+          doc.setFontSize(10);
+          doc.text(`Pesquisa: ${analyzerSearch}`, 14, yOffset);
+          yOffset += 6;
+      }
+
+      doc.setFontSize(12);
+      doc.text(`Total Mostrado: ${distribuidos} | Entregues: ${entregues}`, 14, yOffset);
+      doc.text(`Data de Emissão: ${new Date().toLocaleDateString('pt-BR')}`, 14, yOffset + 6);
 
       const tableColumn = ["Servidor", "Protocolo/PAE", "Status", "Dias Parado"];
       const tableRows = [];
@@ -1274,7 +1354,7 @@ function App() {
       });
 
       autoTable(doc, {
-        startY: 55,
+        startY: yOffset + 12,
         head: [tableColumn],
         body: tableRows,
         theme: 'striped',
@@ -1300,6 +1380,47 @@ function App() {
           </div>
           
           <div className="modal-body" style={{ maxHeight: 'calc(85vh - 75px)' }}>
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'flex-end', background: '#f5f5f7', padding: '16px', borderRadius: '12px' }}>
+              <div style={{ flex: 1, minWidth: '250px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Pesquisar Processo</label>
+                <div style={{ position: 'relative' }}>
+                  <Search size={16} color="var(--text-secondary)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <input 
+                    type="text" 
+                    placeholder="Busque por PAE, Servidor ou Status..." 
+                    value={analyzerSearch}
+                    onChange={(e) => setAnalyzerSearch(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: '8px', border: '1px solid var(--panel-border)', fontSize: '14px' }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Data Inicial</label>
+                <input 
+                  type="date" 
+                  value={analyzerStartDate}
+                  onChange={(e) => setAnalyzerStartDate(e.target.value)}
+                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--panel-border)', fontSize: '14px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Data Final</label>
+                <input 
+                  type="date" 
+                  value={analyzerEndDate}
+                  onChange={(e) => setAnalyzerEndDate(e.target.value)}
+                  style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--panel-border)', fontSize: '14px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={() => { setAnalyzerSearch(''); setAnalyzerStartDate(''); setAnalyzerEndDate(''); }}
+                  style={{ padding: '10px 16px', background: 'white', border: '1px solid var(--panel-border)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Limpar
+                </button>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
                 <div style={{ width: '120px', height: '120px', position: 'relative' }}>
