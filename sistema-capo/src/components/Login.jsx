@@ -128,18 +128,21 @@ const Login = ({ onLogin }) => {
           alignItems: 'center'
         }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginBottom: '32px', textAlign: 'center' }}>
-          <div style={{ 
-            width: '64px', height: '64px', 
-            background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
-            borderRadius: '16px', 
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
-          }}>
-            <Landmark size={36} />
-          </div>
+          <img src="/Brasão do Governo Vertical.png" alt="Governo do Pará" style={{ height: '90px', objectFit: 'contain' }} />
           <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 6px 0', letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>CAPO GESTÃO</h1>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', margin: '0 0 6px 0' }}>
+              <div style={{ 
+                width: '32px', height: '32px', 
+                background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
+                borderRadius: '8px', 
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'white',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+              }}>
+                <Landmark size={18} />
+              </div>
+              <h1 style={{ fontSize: '28px', fontWeight: 700, margin: 0, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>CAPO GESTÃO</h1>
+            </div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>Acesso Restrito</span>
           </div>
           <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', marginTop: '2px' }}>

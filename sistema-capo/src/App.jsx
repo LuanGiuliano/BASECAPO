@@ -209,6 +209,7 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [activeTab, previousTab]);
   const [filterGroup, setFilterGroup] = useState('Todos');
+  const [filterTipoFluxo, setFilterTipoFluxo] = useState('Todos');
   const [filterStartYear, setFilterStartYear] = useState('');
   const [filterEndYear, setFilterEndYear] = useState('');
   const [searchAtivos, setSearchAtivos] = useState('');
@@ -230,6 +231,8 @@ function App() {
   const [analyzerSearch, setAnalyzerSearch] = useState('');
   const [analyzerStartDate, setAnalyzerStartDate] = useState('');
   const [analyzerEndDate, setAnalyzerEndDate] = useState('');
+  const [productivityStartDate, setProductivityStartDate] = useState('');
+  const [productivityEndDate, setProductivityEndDate] = useState('');
   const [quickFilter, setQuickFilter] = useState('Limpos');
   const [distGrupo, setDistGrupo] = useState('Todos');
   const [distStartYear, setDistStartYear] = useState('');
@@ -625,7 +628,11 @@ function App() {
       concluidosList: [...concluidos, ...arquivados],
       arquivadosList: arquivados,
       cirurgicosList: cirurgicos,
-      ativosNasDresList: ativosNasDres
+      ativosNasDresList: ativosNasDres,
+      pendenciasList: ativosRaw.filter(d => {
+         const s = String(d.status_consolidado).toLowerCase();
+         return s.includes('pend') || s.includes('adequação') || s === 'falta de informações';
+      })
     };
   }, [filteredData]);
 
@@ -695,6 +702,13 @@ function App() {
     });
 
     filteredData.forEach(d => {
+      if (productivityStartDate || productivityEndDate) {
+        const processDate = d._updated_at ? new Date(d._updated_at) : d.movDateValid ? new Date(d.movDateValid) : null;
+        if (!processDate) return;
+        if (productivityStartDate && processDate < new Date(productivityStartDate)) return;
+        if (productivityEndDate && processDate > new Date(productivityEndDate)) return;
+      }
+      
       const p_key = d._original_key || String(d['Nº PAE'] || d._row_id);
       const assignedMatricula = assignedProcesses[p_key];
       
@@ -706,8 +720,6 @@ function App() {
         activeMatch = combinedAnalyzers.find(a => a.matricula && String(a.matricula).startsWith(targetMatricula));
       }
       
-
-      
       if (!activeMatch) return; // Excluir analisadores que não estão mais na CAPO
       
       counts[activeMatch.name].Distribuidos += 1;
@@ -718,7 +730,7 @@ function App() {
       }
     });
     return Object.values(counts).sort((a,b) => b.Distribuidos - a.Distribuidos);
-  }, [filteredData, combinedAnalyzers, assignedProcesses]);
+  }, [filteredData, combinedAnalyzers, assignedProcesses, productivityStartDate, productivityEndDate]);
 
   const uniqueYears = useMemo(() => {
     const years = [...new Set(data.map(d => String(d.ano_entrada)))].filter(y => y !== 'N/I' && y !== 'nan').sort();
@@ -762,6 +774,14 @@ function App() {
     if (quickFilter === 'Todos') result = metrics.ativosList;
     else if (quickFilter === 'IGEPES') result = metrics.igepesList;
     else if (quickFilter === 'Retornos') result = metrics.retornosIgepesList;
+    else if (quickFilter === 'Pendências') result = metrics.pendenciasList;
+    else if (quickFilter === 'Arquivados') result = metrics.arquivadosList;
+
+    if (filterTipoFluxo === 'Aposentadorias') {
+      result = result.filter(d => String(d.ASSUNTO_PADRAO || '').toLowerCase().includes('aposentadoria') || String(d.grupo_funcional || '').toLowerCase().includes('aposentadoria') || String(d['Nº PAE'] || '').toLowerCase().includes('aposentadoria'));
+    } else if (filterTipoFluxo === 'Fluxos Menores') {
+      result = result.filter(d => !String(d.ASSUNTO_PADRAO || '').toLowerCase().includes('aposentadoria') && !String(d.grupo_funcional || '').toLowerCase().includes('aposentadoria') && !String(d['Nº PAE'] || '').toLowerCase().includes('aposentadoria'));
+    }
 
     if (filterAtivosDre !== 'Todos') {
       result = result.filter(d => String(d.LOCAL_PADRAO) === filterAtivosDre);
@@ -777,11 +797,13 @@ function App() {
       const lowerSearch = searchAtivos.toLowerCase();
       result = result.filter(d => 
         String(d.SERVIDOR_PADRAO).toLowerCase().includes(lowerSearch) || 
-        String(d.MATRICULA_PADRAO).toLowerCase().includes(lowerSearch)
+        String(d.MATRICULA_PADRAO).toLowerCase().includes(lowerSearch) ||
+        String(d.CPF_PADRAO || '').toLowerCase().includes(lowerSearch) ||
+        String(d['Nº PAE'] || '').toLowerCase().includes(lowerSearch)
       );
     }
     return result;
-  }, [metrics, quickFilter, searchAtivos, filterAtivosDre, filterAtivosStatus]);
+  }, [metrics, quickFilter, searchAtivos, filterAtivosDre, filterAtivosStatus, filterTipoFluxo]);
 
   const totalPagesProcessos = Math.ceil(processosAtivosSearch.length / itemsPerPageProcessos);
   const paginatedProcessos = processosAtivosSearch.slice((pageProcessos - 1) * itemsPerPageProcessos, pageProcessos * itemsPerPageProcessos);
@@ -1045,6 +1067,17 @@ function App() {
           icon: <AlertTriangle size={16} />
         });
       }
+      
+      const realUpdates = dbProcessUpdates.filter(u => String(u.process_id) === String(p['Nº PAE'] || p._row_id)).sort((a,b) => new Date(a.created_at || a.updated_at) - new Date(b.created_at || b.updated_at));
+      
+      realUpdates.forEach(update => {
+        events.push({
+          title: `Atualização: ${update.novo_status || 'Modificação de Dados'}`,
+          desc: `Atualizado por ${update.matricula}.\n${update.observacao ? `Observação: ${update.observacao}` : ''}\nData: ${new Date(update.created_at || update.updated_at).toLocaleString('pt-BR')}`,
+          type: 'green',
+          icon: <History size={16} />
+        });
+      });
       
       const isConcluido = String(p.status_consolidado).toUpperCase().includes('CONCLUIDO') || String(p.status_consolidado).toUpperCase().includes('ARQUIVADO') || String(p.status_consolidado).toUpperCase().includes('TRAMITADO AO IGEPPS');
       
@@ -2206,6 +2239,16 @@ function App() {
                     });
                   }} />
                 </div>
+                <div style={{display: 'flex', gap: '16px', margin: '16px 0', flexWrap: 'wrap'}}>
+                  <div>
+                    <label style={{fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px'}}>Filtrar Produtividade (Data Início)</label>
+                    <input type="date" className="filter-select" value={productivityStartDate} onChange={e => setProductivityStartDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px'}}>Filtrar Produtividade (Data Fim)</label>
+                    <input type="date" className="filter-select" value={productivityEndDate} onChange={e => setProductivityEndDate(e.target.value)} />
+                  </div>
+                </div>
                 <div className="chart-description">Clique sobre um analisador para abrir o seu histórico de processos e emitir o relatório em PDF.</div>
                 
                 <table className="data-table" style={{ marginTop: '16px' }}>
@@ -2265,18 +2308,30 @@ function App() {
             <div className="glass-panel table-container">
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
                 <div className="chart-header" style={{marginBottom: 0}}>
-                  Processos: {quickFilter === 'Limpos' ? 'Ativos CAPO' : quickFilter === 'IGEPES' ? 'Enviados IGEPES' : quickFilter === 'Retornos' ? 'Retornaram do IGEPES' : 'Todos'}
+                  Processos: {quickFilter === 'Limpos' ? 'Ativos CAPO' : quickFilter === 'IGEPES' ? 'Enviados IGEPES' : quickFilter === 'Retornos' ? 'Retornaram do IGEPES' : quickFilter === 'Pendências' ? 'Pendências' : quickFilter === 'Arquivados' ? 'Arquivados' : 'Todos'}
                 </div>
                 
                 <div className="quick-filters" style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
                   <button className={`btn-quick-filter ${quickFilter === 'Limpos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Limpos'); setPageProcessos(1); }}>Ativos CAPO</button>
                   <button className={`btn-quick-filter ${quickFilter === 'IGEPES' ? 'active' : ''}`} onClick={() => { setQuickFilter('IGEPES'); setPageProcessos(1); }}>Enviados IGEPES</button>
                   <button className={`btn-quick-filter ${quickFilter === 'Retornos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Retornos'); setPageProcessos(1); }}>Retornos IGEPES</button>
+                  <button className={`btn-quick-filter ${quickFilter === 'Pendências' ? 'active' : ''}`} onClick={() => { setQuickFilter('Pendências'); setPageProcessos(1); }} style={{borderColor: 'var(--warning-color)', color: quickFilter === 'Pendências' ? '#fff' : 'var(--warning-color)', backgroundColor: quickFilter === 'Pendências' ? 'var(--warning-color)' : 'transparent'}}>Pendências</button>
+                  <button className={`btn-quick-filter ${quickFilter === 'Arquivados' ? 'active' : ''}`} onClick={() => { setQuickFilter('Arquivados'); setPageProcessos(1); }} style={{borderColor: 'var(--border-color)', color: quickFilter === 'Arquivados' ? '#fff' : 'var(--text-secondary)', backgroundColor: quickFilter === 'Arquivados' ? 'var(--text-secondary)' : 'transparent'}}>Arquivados</button>
                   <button className={`btn-quick-filter ${quickFilter === 'Todos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Todos'); setPageProcessos(1); }}>Ver Todos</button>
                 </div>
               </div>
 
               <div style={{display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'flex-end', marginBottom: '24px'}}>
+                  <select 
+                    className="filter-select" 
+                    value={filterTipoFluxo} 
+                    onChange={e => { setFilterTipoFluxo(e.target.value); setPageProcessos(1); }}
+                    style={{maxWidth: '220px'}}
+                  >
+                    <option value="Todos">Todos os Fluxos</option>
+                    <option value="Aposentadorias">Apenas Aposentadorias</option>
+                    <option value="Fluxos Menores">Fluxos Menores</option>
+                  </select>
                   <select 
                     className="filter-select" 
                     value={filterAtivosDre} 
@@ -2348,6 +2403,11 @@ function App() {
                           <div style={{display: 'flex', flexDirection: 'column', gap: '8px'}}>
                             <span className={badgeClass} title={proc.status_normal}>{proc.status_consolidado}</span>
                             <span style={{fontSize: 13, color: 'var(--text-secondary)'}}>{proc.LOCAL_PADRAO}</span>
+                            {(String(proc.status_normal).toLowerCase().includes('óbito') || String(proc.status_normal).toLowerCase().includes('obito') || String(proc.status_normal).toLowerCase().includes('falecid') || String(proc._db_observacao || '').toLowerCase().includes('óbito') || String(proc._db_observacao || '').toLowerCase().includes('obito') || String(proc._db_observacao || '').toLowerCase().includes('falecid')) && (
+                              <div style={{display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ffebee', color: '#c62828', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', width: 'fit-content'}}>
+                                ⚠ Possível Óbito
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td>{proc.INSTRUTOR_PADRAO}</td>
