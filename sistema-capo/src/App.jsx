@@ -41,7 +41,9 @@ import {
   Cell,
   Legend,
   LineChart,
-  Line
+  Line,
+  AreaChart,
+  Area
 } from 'recharts';
 
 import jsPDF from 'jspdf';
@@ -248,6 +250,7 @@ function App() {
   const [itemsPerPageProcessos, setItemsPerPageProcessos] = useState(20);
   const [itemsPerPageAposentados, setItemsPerPageAposentados] = useState(20);
   const [infoModalContent, setInfoModalContent] = useState(null);
+  const [activeChartContext, setActiveChartContext] = useState('ativos');
   const [dbProcessUpdates, setDbProcessUpdates] = useState([]);
   const [cadastroAberto, setCadastroAberto] = useState(false);
   const [customAnalyzers, setCustomAnalyzers] = useState([]);
@@ -614,6 +617,14 @@ function App() {
        return false;
     });
 
+      const capoSagepList = filteredData.filter(d => {
+         const foiIgepps = String(d['Processo foi ao IGEPPS?']).trim().toUpperCase() === 'SIM';
+         const statusUpper = String(d.status_consolidado).toUpperCase();
+         const statusOriginalUpper = String(d.STATUS_PADRAO).toUpperCase();
+         const hasIgepStatus = statusUpper.includes('IGEP') || statusOriginalUpper.includes('IGEP');
+         return foiIgepps || hasIgepStatus;
+      });
+
     return {
       totalAtivosBruto: ativosRaw.length,
       totalAtivosCapo: ativosCapo.length,
@@ -621,6 +632,8 @@ function App() {
       totalArquivados: arquivados.length + concluidos.length,
       totalIgepes: igepesList.length,
       totalRetornosIgepes: retornosIgepesList.length,
+      totalCapoSagepTramitados: capoSagepList.length,
+      capoSagepList,
       ativosList: ativosRaw,
       ativosLimposList: ativosCapo,
       igepesList,
@@ -645,7 +658,18 @@ function App() {
       filteredCounts[year] = 0;
     });
 
-    metrics.cirurgicosList.forEach(d => {
+    let targetList = [];
+    if (activeChartContext === 'ativos') {
+      targetList = metrics.ativosList;
+    } else if (activeChartContext === 'igeppes') {
+      targetList = metrics.igepesList;
+    } else if (activeChartContext === 'capoSagep') {
+      targetList = metrics.capoSagepList || [];
+    } else {
+      targetList = metrics.cirurgicosList;
+    }
+
+    targetList.forEach(d => {
       let year = d.ano_entrada;
       if (!year || year === 'nan') year = 'N/I';
       filteredCounts[year] = (filteredCounts[year] || 0) + 1;
@@ -656,12 +680,14 @@ function App() {
       if (b === 'N/I') return 1;
       return parseInt(a) - parseInt(b);
     }).map(k => ({ name: k, value: filteredCounts[k] }));
-  }, [metrics.cirurgicosList, filteredData]);
+  }, [metrics, filteredData, activeChartContext]);
 
   const timelineAposentadosData = useMemo(() => {
     const counts = {};
-    metrics.concluidosList.forEach(d => {
-      let year = d.ano_publicacao || 'N/I';
+    const targetList = activeChartContext === 'capoSagep' ? (metrics.capoSagepList || []) : metrics.concluidosList;
+    
+    targetList.forEach(d => {
+      let year = d.ano_publicacao || d.ano_entrada || 'N/I';
       counts[year] = (counts[year] || 0) + 1;
     });
     return Object.keys(counts).sort((a, b) => {
@@ -669,29 +695,9 @@ function App() {
       if (b === 'N/I') return 1;
       return parseInt(a) - parseInt(b);
     }).map(k => ({ name: k, value: counts[k] }));
-  }, [metrics.concluidosList]);
+  }, [metrics.concluidosList, metrics.capoSagepList, activeChartContext]);
 
-  const setorData = useMemo(() => {
-    const counts = {};
-    const baseList = [...metrics.ativosLimposList, ...metrics.ativosNasDresList];
-    baseList.forEach(d => {
-      let setor = String(d.LOCAL_PADRAO).trim();
-      
-      // Remover "Não Informado" do gráfico conforme solicitado
-      if (!setor || setor === 'N/I' || setor === 'nan' || setor.toLowerCase() === 'não informado') {
-        return; // Pula os sem informação de local
-      }
-      
-      // Agrupar CAPO para unificar a visualização da Sede
-      if (setor.toLowerCase().includes('capo') || setor.toLowerCase().includes('sira')) {
-         setor = 'Coordenação CAPO';
-      }
 
-      if (setor.length > 25) setor = setor.substring(0, 25) + '...';
-      counts[setor] = (counts[setor] || 0) + 1;
-    });
-    return Object.keys(counts).map(k => ({ name: k, value: counts[k] })).sort((a,b) => b.value - a.value).slice(0, 10);
-  }, [metrics.ativosLimposList, metrics.ativosNasDresList]);
 
   const produtividadeData = useMemo(() => {
     const counts = {};
@@ -1876,10 +1882,10 @@ function App() {
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
           
           <div className="nav-section-title" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '12px' }}>Indicadores Analíticos</div>
-          <a href="#" className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); }}><LayoutDashboard size={20} /> Dashboard Geral</a>
+          <a href="#" className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('dashboard'); setActiveChartContext('ativos'); }}><LayoutDashboard size={20} /> Dashboard Geral</a>
           <a href="#" className={`nav-item ${activeTab === 'producao' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('producao'); }}><TrendingUp size={20} /> Analistas e Produtividade</a>
-          <a href="#" className={`nav-item ${activeTab === 'processos' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('processos'); }}><FileText size={20} /> Processos Ativos</a>
-          <a href="#" className={`nav-item ${activeTab === 'aposentados' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('aposentados'); }}><Archive size={20} style={{ minWidth: 20 }} /> Arquivados & Tramitados</a>
+          <a href="#" className={`nav-item ${activeTab === 'processos' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('processos'); setActiveChartContext('ativos'); }}><FileText size={20} /> Processos Ativos</a>
+          <a href="#" className={`nav-item ${activeTab === 'aposentados' ? 'active' : ''}`} onClick={(e) => { e.preventDefault(); setActiveTab('aposentados'); setActiveChartContext('concluidos'); }}><Archive size={20} style={{ minWidth: 20 }} /> Arquivados & Tramitados</a>
           
           <div style={{ height: '1px', background: 'var(--panel-border)', margin: '16px 0' }}></div>
 
@@ -1980,10 +1986,10 @@ function App() {
 
           {activeTab === 'dashboard' && (
             <>
-              <div className="stats-grid">
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px', marginBottom: '24px' }}>
                 <div 
                   className="glass-panel stat-card" 
-                  style={{cursor: 'pointer'}} 
+                  style={{cursor: 'pointer', background: 'linear-gradient(135deg, var(--accent-color) 0%, #005bb5 100%)', color: '#fff', border: 'none', padding: '36px', boxShadow: '0 12px 32px rgba(0, 122, 255, 0.2)'}} 
                   onClick={() => {
                     setQuickFilter('Todos');
                     setFilterAtivosDre('Todos');
@@ -1991,189 +1997,113 @@ function App() {
                     setSearchAtivos('');
                     setPageProcessos(1);
                     setActiveTab('processos');
+                    setActiveChartContext('ativos');
                   }}
                 >
-                  <div className="stat-icon blue"><FileText /></div>
-                  <div className="stat-details">
-                    <span className="stat-value">{metrics.totalAtivosBruto.toLocaleString('pt-BR')}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span className="stat-label">Total de Ativos</span>
-                      <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
-                        e.stopPropagation();
-                        setInfoModalContent({
-                          title: 'Total de Ativos (Geral)',
-                          description: 'Este indicador mostra a totalidade de processos ativos no sistema (que não estão tramitados ao IGEPPS nem arquivados).',
-                          legends: [
-                            { color: 'var(--accent-color)', label: 'Inclui', desc: 'Processos na CAPO, processos devolvidos para as DREs e processos no IGEPES.' },
-                            { color: 'var(--danger-color)', label: 'Exclui', desc: 'Apenas Processos Finalizados ou Arquivados.' }
-                          ]
-                        });
-                      }} />
+                  <div style={{display: 'flex', flexDirection: 'column', gap: '16px'}}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '20px', fontWeight: 600, opacity: 0.9 }}>
+                      <FileText size={28} color="#fff" />
+                      Total de Ativos da CAPO
                     </div>
-                    <span className="stat-description">Todos os processos em andamento (CAPO, DRE e IGEPES).</span>
-                  </div>
-                </div>
-                
-                <div 
-                  className="glass-panel stat-card" 
-                  style={{cursor: 'pointer'}}
-                  onClick={() => {
-                    setQuickFilter('Limpos');
-                    setFilterAtivosDre('Todos');
-                    setFilterAtivosStatus('__CIRURGICOS__');
-                    setSearchAtivos('');
-                    setPageProcessos(1);
-                    setActiveTab('processos');
-                  }}
-                >
-                  <div className="stat-icon red"><AlertCircle /></div>
-                  <div className="stat-details">
-                    <span className="stat-value">{metrics.totalCirurgico.toLocaleString('pt-BR')}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span className="stat-label">Volume Cirúrgico</span>
-                      <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
-                        e.stopPropagation();
-                        setInfoModalContent({
-                          title: 'Volume Cirúrgico',
-                          description: 'Este não é um número adicional. O Volume Cirúrgico é apenas um "Raio-X" (subconjunto) tirado de dentro do Total de Ativos, destacando os processos com problemas que estão na CAPO ou DREs.',
-                          legends: [
-                            { color: 'var(--warning-color)', label: 'Subconjunto', desc: 'Filtra ativos para exibir qualquer tipo de pendência, adequação, falta de informação ou processos inativos há mais de 30 dias.' }
-                          ]
-                        });
-                      }} />
-                    </div>
-                    <span className="stat-description">Gargalos (Com pendência ou &gt;30d parados).</span>
+                    <span style={{ fontSize: '56px', fontWeight: 700, letterSpacing: '-1.5px', lineHeight: 1 }}>{metrics.totalAtivosBruto.toLocaleString('pt-BR')}</span>
+                    <span style={{ fontSize: '15px', opacity: 0.85, marginTop: '8px', lineHeight: 1.4 }}>
+                      Volume total de processos abertos na Coordenação de Aposentadoria (Sede + DREs). Clique no painel para explorar a base completa.
+                    </span>
                   </div>
                 </div>
 
-                <div 
-                  className="glass-panel stat-card" 
-                  style={{cursor: 'pointer'}}
-                  onClick={() => {
-                    setActiveTab('aposentados');
-                  }}
-                >
-                  <div className="stat-icon green"><Archive /></div>
-                  <div className="stat-details">
-                    <span className="stat-value">{metrics.totalArquivados.toLocaleString('pt-BR')}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span className="stat-label">Finalizados / Arquivados</span>
-                      <Info size={14} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
-                        e.stopPropagation();
-                        setInfoModalContent({
-                          title: 'Finalizados / Arquivados',
-                          description: 'Representa a totalidade de processos que já encerraram o seu ciclo de vida dentro da coordenação e não requerem mais ações.',
-                          legends: [
-                            { color: 'var(--success-color)', label: 'Tramitados ao IGEPPS e Publicados', desc: 'Processos que tiveram suas portarias publicadas no Diário Oficial.' },
-                            { color: '#86868b', label: 'Arquivados', desc: 'Processos baixados definitivamente.' }
-                          ]
-                        });
-                      }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  <div 
+                    className="glass-panel stat-card" 
+                    style={{cursor: 'pointer', background: 'linear-gradient(135deg, #34c759 0%, #248a3d 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(52, 199, 89, 0.2)'}}
+                    onClick={() => {
+                      setQuickFilter('IGEPES');
+                      setFilterAtivosDre('Todos');
+                      setFilterAtivosStatus('Todos');
+                      setSearchAtivos('');
+                      setPageProcessos(1);
+                      setActiveTab('processos');
+                      setActiveChartContext('igeppes');
+                    }}
+                  >
+                    <div className="stat-icon green" style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#fff' }}><Building /></div>
+                    <div className="stat-details">
+                      <span className="stat-value" style={{ fontSize: '28px', color: '#fff' }}>{metrics.totalIgepes.toLocaleString('pt-BR')}</span>
+                      <span className="stat-label" style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '14px', fontWeight: 600 }}>IGEPPS (Em Análise)</span>
                     </div>
-                    <span className="stat-description">Processos tramitados ao IGEPPS ou extintos.</span>
+                  </div>
+
+                  <div 
+                    className="glass-panel stat-card" 
+                    style={{cursor: 'pointer', background: 'linear-gradient(135deg, #32ade6 0%, #1c7bad 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(50, 173, 230, 0.2)'}}
+                    onClick={() => {
+                      setActiveTab('aposentados');
+                      setActiveChartContext('capoSagep');
+                    }}
+                  >
+                    <div className="stat-icon cyan" style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#fff' }}><Archive /></div>
+                    <div className="stat-details">
+                      <span className="stat-value" style={{ fontSize: '28px', color: '#fff' }}>{metrics.totalCapoSagepTramitados.toLocaleString('pt-BR')}</span>
+                      <span className="stat-label" style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '14px', fontWeight: 600 }}>CAPO/SAGEP (Tramitados)</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', marginTop: '24px' }}>
-                <div 
-                  className="glass-panel stat-card" 
-                  style={{cursor: 'pointer', background: 'linear-gradient(145deg, rgba(88, 86, 214, 0.05) 0%, rgba(88, 86, 214, 0.02) 100%)', border: '1px solid rgba(88, 86, 214, 0.2)'}}
-                  onClick={() => {
-                    setQuickFilter('IGEPES');
-                    setFilterAtivosDre('Todos');
-                    setFilterAtivosStatus('Todos');
-                    setSearchAtivos('');
-                    setPageProcessos(1);
-                    setActiveTab('processos');
-                  }}
-                >
-                  <div className="stat-icon purple" style={{ background: 'rgba(88, 86, 214, 0.1)', color: 'rgb(88, 86, 214)' }}><Building /></div>
-                  <div className="stat-details">
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                      <span className="stat-value">{metrics.totalIgepes.toLocaleString('pt-BR')}</span>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--success-color)' }}>{metrics.totalRetornosIgepes} retornaram</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span className="stat-label" style={{ color: 'rgb(88, 86, 214)' }}>Monitoramento IGEPES</span>
-                      <Info size={14} color="rgb(88, 86, 214)" style={{cursor: 'pointer'}} onClick={(e) => {
-                        e.stopPropagation();
-                        setInfoModalContent({
-                          title: 'Monitoramento IGEPES',
-                          description: 'Acompanhamento do lote de processos que foram enviados ao IGEPES (Órgão Previdenciário) para análise externa.',
-                          legends: [
-                            { color: '#af52de', label: 'Enviados IGEPES', desc: 'Processos que estão atualmente com o IGEPES.' },
-                            { color: 'var(--success-color)', label: 'Retornos', desc: 'Processos que já possuem a flag de retorno do IGEPES marcada no sistema.' }
-                          ]
-                        });
-                      }} />
-                    </div>
-                    <span className="stat-description">Processos encaminhados ao órgão estadual.</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="charts-grid" style={{ gridTemplateColumns: '1fr' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
                 <div className="glass-panel">
                   <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Série Histórica do Volume Cirúrgico (Linha do Tempo)
+                    Série Histórica: {
+                      activeChartContext === 'ativos' ? 'Total de Ativos da SEDUC' :
+                      activeChartContext === 'igeppes' ? 'IGEPPS (Em Análise)' :
+                      activeChartContext === 'capoSagep' ? 'CAPO/SAGEP (Tramitados)' :
+                      'Volume Cirúrgico'
+                    }
                     <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
                       e.stopPropagation();
                       setInfoModalContent({
-                        title: 'Série Histórica do Volume Cirúrgico',
-                        description: 'Visão cronológica estrita do gargalo de processos cirúrgicos pendentes.',
+                        title: 'Série Histórica',
+                        description: 'Visão cronológica estrita dos processos do indicador selecionado.',
                         legends: [
                           { color: 'var(--accent-color)', label: 'Eixo X (Anos)', desc: 'Ano de entrada do processo.' },
-                          { color: 'var(--text-primary)', label: 'Eixo Y (Volume)', desc: 'Soma total exclusiva dos processos que formam o volume cirúrgico daquele ano.' },
+                          { color: 'var(--text-primary)', label: 'Eixo Y (Volume)', desc: 'Soma total exclusiva dos processos daquele ano, no indicador atual.' },
                           { color: 'var(--panel-border)', label: 'Interatividade', desc: 'Você pode clicar em um ano no gráfico para filtrar todo o painel.' }
                         ]
                       });
                     }} />
                   </div>
                   <div className="chart-description">
-                    Este gráfico soma <strong>EXCLUSIVAMENTE</strong> os processos que se encontram no Volume Cirúrgico agrupados por ano de entrada (exclui 1993). 
+                    Este gráfico soma <strong>EXCLUSIVAMENTE</strong> os processos do indicador <strong>{
+                      activeChartContext === 'ativos' ? 'Ativos da SEDUC' :
+                      activeChartContext === 'igeppes' ? 'IGEPPS' :
+                      activeChartContext === 'capoSagep' ? 'CAPO/SAGEP' :
+                      'Volume Cirúrgico'
+                    }</strong> agrupados por ano de entrada. 
                     Clique em um ano na linha do tempo para filtrar e visualizar os processos correspondentes.
                   </div>
-                  <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
+                  <div style={{ width: '100%', height: 380, marginTop: '20px' }}>
                     <ResponsiveContainer>
-                      <LineChart data={timelineData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }} onClick={handleTimelineClick} style={{cursor: 'pointer'}}>
+                      <AreaChart data={timelineData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }} onClick={handleTimelineClick} style={{cursor: 'pointer'}}>
+                        <defs>
+                          <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={activeChartContext === 'ativos' ? 'var(--accent-color)' : activeChartContext === 'igeppes' ? 'var(--success-color)' : activeChartContext === 'capoSagep' ? 'rgb(50, 173, 230)' : 'var(--danger-color)'} stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor={activeChartContext === 'ativos' ? 'var(--accent-color)' : activeChartContext === 'igeppes' ? 'var(--success-color)' : activeChartContext === 'capoSagep' ? 'rgb(50, 173, 230)' : 'var(--danger-color)'} stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e5ea" vertical={false} />
                         <XAxis dataKey="name" stroke="#86868b" fontSize={13} tickMargin={10} />
                         <YAxis stroke="#86868b" fontSize={13} tickMargin={10} />
                         <Tooltip cursor={{stroke: 'rgba(0,0,0,0.05)', strokeWidth: 2}} contentStyle={{ borderRadius: '12px', border: '1px solid #e5e5ea', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', fontFamily: 'var(--font-main)' }} />
-                        <Line type="monotone" dataKey="value" stroke="var(--danger-color)" strokeWidth={3} activeDot={{ r: 8, fill: '#fff', stroke: 'var(--danger-color)', strokeWidth: 2 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-
-              <div className="charts-grid" style={{ gridTemplateColumns: '1fr' }}>
-                <div className="glass-panel">
-                  <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Volume de Processos por Setor (DREs/CAPO)
-                    <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
-                      e.stopPropagation();
-                      setInfoModalContent({
-                        title: 'Volume de Processos por Setor',
-                        description: 'Este gráfico ilustra a distribuição física ou sistêmica atual de todos os processos ATIVOS da base (excluindo os já tramitados ao IGEPPS e arquivados).',
-                        legends: [
-                          { color: 'var(--accent-color)', label: 'Eixo Y (Setores)', desc: 'Nome da DRE, URE ou da própria CAPO.' },
-                          { color: 'var(--text-primary)', label: 'Eixo X (Quantidade)', desc: 'Número total de processos ativos alocados naquele setor.' }
-                        ]
-                      });
-                    }} />
-                  </div>
-                  <div className="chart-description">Distribuição de processos ativos agrupados por sua localização física/sistema atual.</div>
-                  <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
-                    <ResponsiveContainer>
-                      <BarChart data={setorData} margin={{ top: 20, right: 30, left: 0, bottom: 40 }} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e5ea" horizontal={false} />
-                        <XAxis type="number" stroke="#86868b" fontSize={13} />
-                        <YAxis dataKey="name" type="category" stroke="#86868b" fontSize={12} width={220} />
-                        <Tooltip cursor={{fill: 'rgba(0,0,0,0.02)'}} contentStyle={{ borderRadius: '12px', border: '1px solid #e5e5ea', boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }} />
-                        <Bar dataKey="value" fill="var(--accent-color)" radius={[0, 6, 6, 0]} />
-                      </BarChart>
+                        <Area 
+                          type="monotone" 
+                          dataKey="value" 
+                          stroke={activeChartContext === 'ativos' ? 'var(--accent-color)' : activeChartContext === 'igeppes' ? 'var(--success-color)' : activeChartContext === 'capoSagep' ? 'rgb(50, 173, 230)' : 'var(--danger-color)'} 
+                          fillOpacity={1} 
+                          fill="url(#colorValue)" 
+                          strokeWidth={3} 
+                          activeDot={{ r: 8, fill: '#fff', stroke: activeChartContext === 'ativos' ? 'var(--accent-color)' : activeChartContext === 'igeppes' ? 'var(--success-color)' : activeChartContext === 'capoSagep' ? 'rgb(50, 173, 230)' : 'var(--danger-color)', strokeWidth: 2 }} 
+                        />
+                      </AreaChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
@@ -2495,14 +2425,14 @@ function App() {
               <div className="charts-grid" style={{ gridTemplateColumns: '1fr', marginBottom: '32px' }}>
                 <div className="glass-panel" style={{ background: 'var(--background-color)', border: '1px solid var(--panel-border)', boxShadow: 'none' }}>
                   <div className="chart-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Série Histórica de Conclusões (Por Ano de Publicação)
+                    {activeChartContext === 'capoSagep' ? 'Série Histórica: CAPO/SAGEP (Tramitados)' : 'Série Histórica de Conclusões (Por Ano de Publicação)'}
                     <Info size={16} color="var(--text-secondary)" style={{cursor: 'pointer'}} onClick={(e) => {
                       e.stopPropagation();
                       setInfoModalContent({
-                        title: 'Série Histórica de Conclusões',
-                        description: 'Visão cronológica dos processos finalizados, baseada no ano de publicação no Diário Oficial. Clique nos pontos para filtrar a tabela.',
+                        title: 'Série Histórica',
+                        description: 'Visão cronológica dos processos finalizados ou tramitados. Clique nos pontos para filtrar a tabela.',
                         legends: [
-                          { color: 'var(--success-color)', label: 'Eixo Y (Volume)', desc: 'Quantidade de processos publicados/tramitados ao IGEPPS naquele ano.' }
+                          { color: activeChartContext === 'capoSagep' ? 'rgb(50, 173, 230)' : 'var(--success-color)', label: 'Eixo Y (Volume)', desc: 'Quantidade de processos naquele ano.' }
                         ]
                       });
                     }} />
@@ -2513,7 +2443,7 @@ function App() {
                     )}
                   </div>
                   <div className="chart-description">
-                    Este gráfico agrupa os processos tramitados ao IGEPPS e arquivados pelo <strong>Ano de Publicação</strong> no Diário Oficial. Clique num ano para filtrar a tabela abaixo.
+                    Este gráfico agrupa os processos {activeChartContext === 'capoSagep' ? 'tramitados ao IGEPPS' : 'arquivados'} por <strong>Ano</strong>. Clique num ano para filtrar a tabela abaixo.
                   </div>
                   <div style={{ width: '100%', height: 320, marginTop: '20px' }}>
                     <ResponsiveContainer>
@@ -2522,7 +2452,7 @@ function App() {
                         <XAxis dataKey="name" stroke="#86868b" fontSize={13} tickMargin={10} />
                         <YAxis stroke="#86868b" fontSize={13} tickMargin={10} />
                         <Tooltip cursor={{stroke: 'rgba(0,0,0,0.05)', strokeWidth: 2}} contentStyle={{ borderRadius: '12px', border: '1px solid #e5e5ea', boxShadow: '0 8px 24px rgba(0,0,0,0.08)', fontFamily: 'var(--font-main)' }} />
-                        <Line type="monotone" dataKey="value" stroke="var(--success-color)" strokeWidth={3} activeDot={{ r: 8, fill: '#fff', stroke: 'var(--success-color)', strokeWidth: 2 }} />
+                        <Line type="monotone" dataKey="value" stroke={activeChartContext === 'capoSagep' ? 'rgb(50, 173, 230)' : 'var(--success-color)'} strokeWidth={3} activeDot={{ r: 8, fill: '#fff', stroke: activeChartContext === 'capoSagep' ? 'rgb(50, 173, 230)' : 'var(--success-color)', strokeWidth: 2 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
