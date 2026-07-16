@@ -581,8 +581,8 @@ function App() {
     ativosRaw.forEach(d => {
       const local = String(d.LOCAL_PADRAO).toUpperCase();
       
-      const isIgepes = local.includes('IGEPES') || local.includes('IGEPPS');
-      const isRetornoIgepes = String(d['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPES?']).toUpperCase() === 'SIM';
+      const isIgepes = local.includes('IGEPES') || local.includes('IGEPPS') || local.includes('IGEPREV');
+      const isRetornoIgepes = String(d['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPES?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPREV?']).toUpperCase() === 'SIM';
       const isDre = local.includes('DRE') || local.includes('URE');
 
       if (isRetornoIgepes) {
@@ -618,10 +618,11 @@ function App() {
     });
 
       const capoSagepList = filteredData.filter(d => {
-         const foiIgepps = String(d['Processo foi ao IGEPPS?']).trim().toUpperCase() === 'SIM';
+         const foiIgepps = String(d['Processo foi ao IGEPPS?']).trim().toUpperCase() === 'SIM' || String(d['Processo foi ao IGEPREV?']).trim().toUpperCase() === 'SIM';
          const statusUpper = String(d.status_consolidado).toUpperCase();
          const statusOriginalUpper = String(d.STATUS_PADRAO).toUpperCase();
-         const hasIgepStatus = statusUpper.includes('IGEP') || statusOriginalUpper.includes('IGEP');
+         const obs = String(d['OBSERVAÇÃO'] || d['OBS'] || d['Qual documentação'] || '').toUpperCase();
+         const hasIgepStatus = statusUpper.includes('IGEP') || statusOriginalUpper.includes('IGEP') || (obs.includes('ENCAMINHADO') && obs.includes('IGEP'));
          return foiIgepps || hasIgepStatus;
       });
 
@@ -633,6 +634,7 @@ function App() {
       totalIgepes: igepesList.length,
       totalRetornosIgepes: retornosIgepesList.length,
       totalCapoSagepTramitados: capoSagepList.length,
+      totalPublicados: filteredData.filter(d => String(d.status_consolidado).toUpperCase().includes('PUBLICADO') || String(d.status_consolidado).toUpperCase() === 'CONCLUIDO').length,
       capoSagepList,
       ativosList: ativosRaw,
       ativosLimposList: ativosCapo,
@@ -1047,7 +1049,7 @@ function App() {
         icon: <Play size={16} />
       });
       
-      if (String(p['Processo foi ao IGEPPS?']).toUpperCase() === 'SIM') {
+      if (String(p['Processo foi ao IGEPPS?']).toUpperCase() === 'SIM' || String(p['Processo foi ao IGEPREV?']).toUpperCase() === 'SIM') {
         events.push({
           title: 'Tramitado ao IGEPPS',
           desc: 'O processo foi encaminhado para análise técnica no IGEPPS.',
@@ -1056,7 +1058,7 @@ function App() {
         });
       }
       
-      if (String(p['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM') {
+      if (String(p['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(p['Processo retornou do IGEPREV?']).toUpperCase() === 'SIM') {
         events.push({
           title: 'Retorno do IGEPPS',
           desc: `O processo retornou do órgão estadual. Setor Atual de tramitação: ${p['LOCALIZAÇÃO DO PROCESSO'] || p.LOCAL_PADRAO}.`,
@@ -1989,7 +1991,7 @@ function App() {
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px', marginBottom: '24px' }}>
                 <div 
                   className="glass-panel stat-card" 
-                  style={{cursor: 'pointer', background: 'linear-gradient(135deg, var(--accent-color) 0%, #005bb5 100%)', color: '#fff', border: 'none', padding: '36px', boxShadow: '0 12px 32px rgba(0, 122, 255, 0.2)'}} 
+                  style={{cursor: 'pointer', background: 'linear-gradient(135deg, var(--accent-color) 0%, #005bb5 100%)', color: '#fff', border: 'none', padding: '36px', boxShadow: '0 12px 32px rgba(0, 122, 255, 0.2)', position: 'relative', overflow: 'hidden'}} 
                   onClick={() => {
                     setQuickFilter('Todos');
                     setFilterAtivosDre('Todos');
@@ -2000,6 +2002,9 @@ function App() {
                     setActiveChartContext('ativos');
                   }}
                 >
+                  <div style={{ position: 'absolute', top: '15%', right: '5%', opacity: 0.15, transform: 'scale(1.5)' }}>
+                    <FileText size={80} color="#fff" />
+                  </div>
                   <div style={{display: 'flex', flexDirection: 'column', gap: '16px'}}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '20px', fontWeight: 600, opacity: 0.9 }}>
                       <FileText size={28} color="#fff" />
@@ -2015,7 +2020,7 @@ function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                   <div 
                     className="glass-panel stat-card" 
-                    style={{cursor: 'pointer', background: 'linear-gradient(135deg, #34c759 0%, #248a3d 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(52, 199, 89, 0.2)'}}
+                    style={{cursor: 'pointer', background: 'linear-gradient(135deg, #34c759 0%, #248a3d 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(52, 199, 89, 0.2)', position: 'relative', overflow: 'hidden'}}
                     onClick={() => {
                       setQuickFilter('IGEPES');
                       setFilterAtivosDre('Todos');
@@ -2026,6 +2031,9 @@ function App() {
                       setActiveChartContext('igeppes');
                     }}
                   >
+                    <div style={{ position: 'absolute', top: '15%', right: '5%', opacity: 0.15, transform: 'scale(1.5)' }}>
+                      <Building size={80} color="#fff" />
+                    </div>
                     <div className="stat-icon green" style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#fff' }}><Building /></div>
                     <div className="stat-details">
                       <span className="stat-value" style={{ fontSize: '28px', color: '#fff' }}>{metrics.totalIgepes.toLocaleString('pt-BR')}</span>
@@ -2035,16 +2043,37 @@ function App() {
 
                   <div 
                     className="glass-panel stat-card" 
-                    style={{cursor: 'pointer', background: 'linear-gradient(135deg, #32ade6 0%, #1c7bad 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(50, 173, 230, 0.2)'}}
+                    style={{cursor: 'pointer', background: 'linear-gradient(135deg, #32ade6 0%, #1c7bad 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(50, 173, 230, 0.2)', position: 'relative', overflow: 'hidden'}}
                     onClick={() => {
                       setActiveTab('aposentados');
                       setActiveChartContext('capoSagep');
                     }}
                   >
+                    <div style={{ position: 'absolute', top: '15%', right: '5%', opacity: 0.15, transform: 'scale(1.5)' }}>
+                      <Archive size={80} color="#fff" />
+                    </div>
                     <div className="stat-icon cyan" style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#fff' }}><Archive /></div>
                     <div className="stat-details">
                       <span className="stat-value" style={{ fontSize: '28px', color: '#fff' }}>{metrics.totalCapoSagepTramitados.toLocaleString('pt-BR')}</span>
-                      <span className="stat-label" style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '14px', fontWeight: 600 }}>CAPO/SAGEP (Tramitados)</span>
+                      <span className="stat-label" style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '14px', fontWeight: 600 }}>CAPO/SAGEP (Processos já tramitados ao IGEPPS)</span>
+                    </div>
+                  </div>
+
+                  <div 
+                    className="glass-panel stat-card" 
+                    style={{cursor: 'pointer', background: 'linear-gradient(135deg, #af52de 0%, #7622a8 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(175, 82, 222, 0.2)', position: 'relative', overflow: 'hidden'}}
+                    onClick={() => {
+                      setActiveTab('aposentados');
+                      setActiveChartContext('concluidos');
+                    }}
+                  >
+                    <div style={{ position: 'absolute', top: '15%', right: '5%', opacity: 0.15, transform: 'scale(1.5)' }}>
+                      <CheckCircle2 size={80} color="#fff" />
+                    </div>
+                    <div className="stat-icon purple" style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#fff' }}><CheckCircle2 /></div>
+                    <div className="stat-details">
+                      <span className="stat-value" style={{ fontSize: '28px', color: '#fff' }}>{metrics.totalPublicados.toLocaleString('pt-BR')}</span>
+                      <span className="stat-label" style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '14px', fontWeight: 600 }}>Publicados (Finalizados pelo IGEPPS)</span>
                     </div>
                   </div>
                 </div>
