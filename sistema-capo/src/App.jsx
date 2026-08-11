@@ -1247,6 +1247,82 @@ function App() {
     );
   };
 
+  const handleSaveEditedAnalyzer = async (e) => {
+    e.preventDefault();
+    if (!editingAnalyzer.name.trim() || !editingAnalyzer.matricula.trim()) return;
+
+    let updatedCustom = [...customAnalyzers];
+    const existingIndex = updatedCustom.findIndex(a => a.matricula === editingAnalyzer.matricula);
+    
+    if (existingIndex >= 0) {
+      updatedCustom[existingIndex] = editingAnalyzer;
+    } else {
+      updatedCustom.push(editingAnalyzer);
+    }
+    
+    try {
+      const { error } = await supabase.from('system_settings').upsert({ key: 'custom_analyzers', value: updatedCustom });
+      if (error) throw error;
+      setCustomAnalyzers(updatedCustom);
+      setEditingAnalyzer(null);
+      alert('Dados do servidor atualizados com sucesso!');
+    } catch(err) {
+      console.error(err);
+      alert('Erro ao atualizar servidor. Verifique o banco de dados.');
+    }
+  };
+
+  const renderEditAnalyzerModal = () => {
+    if (!editingAnalyzer) return null;
+    return (
+      <div className="modal-overlay" onClick={() => setEditingAnalyzer(null)} style={{zIndex: 3000}}>
+        <div className="modal-content fade-in" style={{width: 500, padding: 24}} onClick={e => e.stopPropagation()}>
+          <div className="modal-header" style={{ marginBottom: 16 }}>
+            <h2 style={{margin: 0}}>Editar Analista</h2>
+            <button onClick={() => setEditingAnalyzer(null)}>✕</button>
+          </div>
+          <form onSubmit={handleSaveEditedAnalyzer} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Nome Completo</label>
+              <input type="text" required value={editingAnalyzer.name} onChange={e => setEditingAnalyzer({...editingAnalyzer, name: e.target.value.toUpperCase()})}
+                style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Matrícula</label>
+              <input type="text" required value={editingAnalyzer.matricula} onChange={e => setEditingAnalyzer({...editingAnalyzer, matricula: e.target.value})}
+                style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
+                disabled={true}
+                title="A matrícula é a chave e não pode ser alterada."
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Tipo / Cargo</label>
+              <select value={editingAnalyzer.tipo} onChange={e => setEditingAnalyzer({...editingAnalyzer, tipo: e.target.value})}
+                style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}>
+                <option value="Servidor">Servidor</option>
+                <option value="Estagiário">Estagiário</option>
+                <option value="Analista">Analista</option>
+                <option value="Gestor">Gestor</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button type="submit"
+                style={{
+                  background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
+                  color: 'white', border: 'none', padding: '12px 24px', borderRadius: '10px', 
+                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                }}>
+                Salvar Alterações
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   const renderAnalyzerModal = () => {
     if (!selectedAnalyzer) return null;
     
@@ -1377,82 +1453,6 @@ function App() {
       { name: 'Tramitados ao IGEPPS', value: entregues, fill: 'var(--success-color)' },
       { name: 'Pendentes', value: distribuidos - entregues, fill: '#e5e5ea' }
     ];
-
-  const handleSaveEditedAnalyzer = async (e) => {
-    e.preventDefault();
-    if (!editingAnalyzer.name.trim() || !editingAnalyzer.matricula.trim()) return;
-
-    let updatedCustom = [...customAnalyzers];
-    const existingIndex = updatedCustom.findIndex(a => a.matricula === editingAnalyzer.matricula);
-    
-    if (existingIndex >= 0) {
-      updatedCustom[existingIndex] = editingAnalyzer;
-    } else {
-      updatedCustom.push(editingAnalyzer);
-    }
-    
-    try {
-      const { error } = await supabase.from('system_settings').upsert({ key: 'custom_analyzers', value: updatedCustom });
-      if (error) throw error;
-      setCustomAnalyzers(updatedCustom);
-      setEditingAnalyzer(null);
-      alert('Dados do servidor atualizados com sucesso!');
-    } catch(err) {
-      console.error(err);
-      alert('Erro ao atualizar servidor. Verifique o banco de dados.');
-    }
-  };
-
-  const renderEditAnalyzerModal = () => {
-    if (!editingAnalyzer) return null;
-    return (
-      <div className="modal-overlay" onClick={() => setEditingAnalyzer(null)} style={{zIndex: 3000}}>
-        <div className="modal-content fade-in" style={{width: 500, padding: 24}} onClick={e => e.stopPropagation()}>
-          <div className="modal-header" style={{ marginBottom: 16 }}>
-            <h2 style={{margin: 0}}>Editar Analista</h2>
-            <button onClick={() => setEditingAnalyzer(null)}>✕</button>
-          </div>
-          <form onSubmit={handleSaveEditedAnalyzer} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Nome Completo</label>
-              <input type="text" required value={editingAnalyzer.name} onChange={e => setEditingAnalyzer({...editingAnalyzer, name: e.target.value.toUpperCase()})}
-                style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Matrícula</label>
-              <input type="text" required value={editingAnalyzer.matricula} onChange={e => setEditingAnalyzer({...editingAnalyzer, matricula: e.target.value})}
-                style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}
-                disabled={true}
-                title="A matrícula é a chave e não pode ser alterada."
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Tipo / Cargo</label>
-              <select value={editingAnalyzer.tipo} onChange={e => setEditingAnalyzer({...editingAnalyzer, tipo: e.target.value})}
-                style={{ padding: '12px 16px', borderRadius: '10px', border: '1px solid var(--panel-border)', outline: 'none', background: '#fbfbfd', fontSize: '14px' }}>
-                <option value="Servidor">Servidor</option>
-                <option value="Estagiário">Estagiário</option>
-                <option value="Analista">Analista</option>
-                <option value="Gestor">Gestor</option>
-              </select>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-              <button type="submit"
-                style={{
-                  background: 'linear-gradient(145deg, #2c2c2e 0%, #1c1c1e 100%)', 
-                  color: 'white', border: 'none', padding: '12px 24px', borderRadius: '10px', 
-                  fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                }}>
-                Salvar Alterações
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  };
 
     return (
       <div className="modal-overlay" onClick={() => setSelectedAnalyzer(null)}>
