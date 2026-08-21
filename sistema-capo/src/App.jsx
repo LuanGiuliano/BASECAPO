@@ -577,25 +577,25 @@ function App() {
       !arquivadoKeywords.some(k => String(d.status_consolidado).toUpperCase().includes(k))
     );
 
-    const igepesList = [];
-    const retornosIgepesList = [];
+    const igeppsList = [];
+    const retornosIgeppsList = [];
     const ativosCapo = []; // Ativos que estão estritamente na CAPO
     const ativosNasDres = []; // Ativos que estão nas DREs/UREs
 
     ativosRaw.forEach(d => {
       const local = String(d.LOCAL_PADRAO).toUpperCase();
       
-      const isIgepes = local.includes('IGEPES') || local.includes('IGEPPS') || local.includes('IGEPREV');
-      const isRetornoIgepes = String(d['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPES?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPREV?']).toUpperCase() === 'SIM';
+      const isIgepps = local.includes('IGEPPS') || local.includes('IGEPPS') || local.includes('IGEPREV');
+      const isRetornoIgepps = String(d['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPPS?']).toUpperCase() === 'SIM' || String(d['Processo retornou do IGEPREV?']).toUpperCase() === 'SIM';
       const isDre = local.includes('DRE') || local.includes('URE');
 
-      if (isRetornoIgepes) {
-        retornosIgepesList.push(d);
-        // Se retornou do IGEPES, está novamente em posse da CAPO
+      if (isRetornoIgepps) {
+        retornosIgeppsList.push(d);
+        // Se retornou do IGEPPS, está novamente em posse da CAPO
         ativosCapo.push(d);
-      } else if (isIgepes) {
-        // Se está no IGEPES e não retornou
-        igepesList.push(d);
+      } else if (isIgepps) {
+        // Se está no IGEPPS e não retornou
+        igeppsList.push(d);
       } else if (isDre) {
         // Processos devolvidos às DREs/UREs para acerto
         ativosNasDres.push(d);
@@ -635,15 +635,15 @@ function App() {
       totalAtivosCapo: ativosCapo.length,
       totalCirurgico: cirurgicos.length,
       totalArquivados: arquivados.length + concluidos.length,
-      totalIgepes: igepesList.length,
-      totalRetornosIgepes: retornosIgepesList.length,
+      totalIgepps: igeppsList.length,
+      totalRetornosIgepps: retornosIgeppsList.length,
       totalCapoSagepTramitados: capoSagepList.length,
       totalPublicados: filteredData.filter(d => String(d.status_consolidado).toUpperCase().includes('PUBLICADO') || String(d.status_consolidado).toUpperCase() === 'CONCLUIDO').length,
       capoSagepList,
       ativosList: ativosRaw,
       ativosLimposList: ativosCapo,
-      igepesList,
-      retornosIgepesList,
+      igeppsList,
+      retornosIgeppsList,
       concluidosList: [...concluidos, ...arquivados],
       arquivadosList: arquivados,
       cirurgicosList: cirurgicos,
@@ -668,7 +668,7 @@ function App() {
     if (activeChartContext === 'ativos') {
       targetList = metrics.ativosList;
     } else if (activeChartContext === 'igeppes') {
-      targetList = metrics.igepesList;
+      targetList = metrics.igeppsList;
     } else if (activeChartContext === 'capoSagep') {
       targetList = metrics.capoSagepList || [];
     } else {
@@ -764,8 +764,8 @@ function App() {
   const uniqueAtivosDre = useMemo(() => {
     let baseList = metrics.ativosLimposList;
     if (quickFilter === 'Todos') baseList = metrics.ativosList;
-    else if (quickFilter === 'IGEPES') baseList = metrics.igepesList;
-    else if (quickFilter === 'Retornos') baseList = metrics.retornosIgepesList;
+    else if (quickFilter === 'IGEPPS') baseList = metrics.igeppsList;
+    else if (quickFilter === 'Retornos') baseList = metrics.retornosIgeppsList;
     
     const dres = [...new Set(baseList.map(d => String(d.LOCAL_PADRAO)))].filter(x => x !== 'N/I' && x !== 'nan').sort();
     return ['Todos', ...dres];
@@ -774,8 +774,8 @@ function App() {
   const uniqueAtivosStatus = useMemo(() => {
     let baseList = metrics.ativosLimposList;
     if (quickFilter === 'Todos') baseList = metrics.ativosList;
-    else if (quickFilter === 'IGEPES') baseList = metrics.igepesList;
-    else if (quickFilter === 'Retornos') baseList = metrics.retornosIgepesList;
+    else if (quickFilter === 'IGEPPS') baseList = metrics.igeppsList;
+    else if (quickFilter === 'Retornos') baseList = metrics.retornosIgeppsList;
 
     const statuses = [...new Set(baseList.map(d => String(d.status_consolidado)))].filter(x => x !== 'N/I' && x !== 'nan').sort();
     return ['Todos', ...statuses];
@@ -784,8 +784,8 @@ function App() {
   const processosAtivosSearch = useMemo(() => {
     let result = metrics.ativosLimposList;
     if (quickFilter === 'Todos') result = metrics.ativosList;
-    else if (quickFilter === 'IGEPES') result = metrics.igepesList;
-    else if (quickFilter === 'Retornos') result = metrics.retornosIgepesList;
+    else if (quickFilter === 'IGEPPS') result = metrics.igeppsList;
+    else if (quickFilter === 'Retornos') result = metrics.retornosIgeppsList;
     else if (quickFilter === 'Pendências') result = metrics.pendenciasList;
     else if (quickFilter === 'Arquivados') result = metrics.arquivadosList;
 
@@ -2144,7 +2144,7 @@ function App() {
                     className="glass-panel stat-card" 
                     style={{cursor: 'pointer', background: 'linear-gradient(135deg, #34c759 0%, #248a3d 100%)', color: '#fff', border: 'none', padding: '24px', flex: 1, alignItems: 'center', display: 'flex', gap: '20px', boxShadow: '0 8px 24px rgba(52, 199, 89, 0.2)', position: 'relative', overflow: 'hidden'}}
                     onClick={() => {
-                      setQuickFilter('IGEPES');
+                      setQuickFilter('IGEPPS');
                       setFilterAtivosDre('Todos');
                       setFilterAtivosStatus('Todos');
                       setSearchAtivos('');
@@ -2158,7 +2158,7 @@ function App() {
                     </div>
                     <div className="stat-icon green" style={{ background: 'rgba(255, 255, 255, 0.2)', color: '#fff' }}><Building /></div>
                     <div className="stat-details">
-                      <span className="stat-value" style={{ fontSize: '28px', color: '#fff' }}>{metrics.totalIgepes.toLocaleString('pt-BR')}</span>
+                      <span className="stat-value" style={{ fontSize: '28px', color: '#fff' }}>{metrics.totalIgepps.toLocaleString('pt-BR')}</span>
                       <span className="stat-label" style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '14px', fontWeight: 600 }}>IGEPPS (Em Análise)</span>
                     </div>
                   </div>
@@ -2405,13 +2405,13 @@ function App() {
             <div className="glass-panel table-container">
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
                 <div className="chart-header" style={{marginBottom: 0}}>
-                  Processos: {quickFilter === 'Limpos' ? 'Ativos CAPO' : quickFilter === 'IGEPES' ? 'Enviados IGEPES' : quickFilter === 'Retornos' ? 'Retornaram do IGEPES' : quickFilter === 'Pendências' ? 'Pendências' : quickFilter === 'Arquivados' ? 'Arquivados' : 'Todos'}
+                  Processos: {quickFilter === 'Limpos' ? 'Ativos CAPO' : quickFilter === 'IGEPPS' ? 'Enviados IGEPPS' : quickFilter === 'Retornos' ? 'Retornaram do IGEPPS' : quickFilter === 'Pendências' ? 'Pendências' : quickFilter === 'Arquivados' ? 'Arquivados' : 'Todos'}
                 </div>
                 
                 <div className="quick-filters" style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
                   <button className={`btn-quick-filter ${quickFilter === 'Limpos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Limpos'); setPageProcessos(1); }}>Ativos CAPO</button>
-                  <button className={`btn-quick-filter ${quickFilter === 'IGEPES' ? 'active' : ''}`} onClick={() => { setQuickFilter('IGEPES'); setPageProcessos(1); }}>Enviados IGEPES</button>
-                  <button className={`btn-quick-filter ${quickFilter === 'Retornos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Retornos'); setPageProcessos(1); }}>Retornos IGEPES</button>
+                  <button className={`btn-quick-filter ${quickFilter === 'IGEPPS' ? 'active' : ''}`} onClick={() => { setQuickFilter('IGEPPS'); setPageProcessos(1); }}>Enviados IGEPPS</button>
+                  <button className={`btn-quick-filter ${quickFilter === 'Retornos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Retornos'); setPageProcessos(1); }}>Retornos IGEPPS</button>
                   <button className={`btn-quick-filter ${quickFilter === 'Pendências' ? 'active' : ''}`} onClick={() => { setQuickFilter('Pendências'); setPageProcessos(1); }} style={{borderColor: 'var(--warning-color)', color: quickFilter === 'Pendências' ? '#fff' : 'var(--warning-color)', backgroundColor: quickFilter === 'Pendências' ? 'var(--warning-color)' : 'transparent'}}>Pendências</button>
                   <button className={`btn-quick-filter ${quickFilter === 'Arquivados' ? 'active' : ''}`} onClick={() => { setQuickFilter('Arquivados'); setPageProcessos(1); }} style={{borderColor: 'var(--border-color)', color: quickFilter === 'Arquivados' ? '#fff' : 'var(--text-secondary)', backgroundColor: quickFilter === 'Arquivados' ? 'var(--text-secondary)' : 'transparent'}}>Arquivados</button>
                   <button className={`btn-quick-filter ${quickFilter === 'Todos' ? 'active' : ''}`} onClick={() => { setQuickFilter('Todos'); setPageProcessos(1); }}>Ver Todos</button>
