@@ -215,6 +215,7 @@ function App() {
   const [filterStartYear, setFilterStartYear] = useState('');
   const [filterEndYear, setFilterEndYear] = useState('');
   const [searchAtivos, setSearchAtivos] = useState('');
+  const [searchPaeAtivos, setSearchPaeAtivos] = useState('');
   const [searchAposentados, setSearchAposentados] = useState('');
   const [pageProcessos, setPageProcessos] = useState(1);
   const [pageAposentados, setPageAposentados] = useState(1);
@@ -806,15 +807,36 @@ function App() {
     }
     if (searchAtivos) {
       const lowerSearch = searchAtivos.toLowerCase();
-      result = result.filter(d => 
-        String(d.SERVIDOR_PADRAO).toLowerCase().includes(lowerSearch) || 
-        String(d.MATRICULA_PADRAO).toLowerCase().includes(lowerSearch) ||
-        String(d.CPF_PADRAO || '').toLowerCase().includes(lowerSearch) ||
-        String(d['Nº PAE'] || '').toLowerCase().includes(lowerSearch)
-      );
+      const cleanSearch = lowerSearch.replace(/[^\d]/g, '');
+      result = result.filter(d => {
+        const serv = String(d.SERVIDOR_PADRAO).toLowerCase();
+        const mat = String(d.MATRICULA_PADRAO).toLowerCase();
+        const cpf = String(d.CPF_PADRAO || '').toLowerCase();
+        const pae = String(d['Nº PAE/SIIG'] || d['Nº PROCESSO PAE'] || d['  Nº PROCESSO PAE'] || d['Nº PAE'] || d['N° PAE'] || d['PAE'] || d['PROTOCOLO N°PAE'] || d['PROTOCOLO_PADRAO'] || '').toLowerCase();
+        
+        let matchPae = false;
+        if (cleanSearch) {
+          matchPae = pae.replace(/[^\d]/g, '').includes(cleanSearch);
+        } else {
+          matchPae = pae.includes(lowerSearch);
+        }
+        
+        return serv.includes(lowerSearch) || mat.includes(lowerSearch) || cpf.includes(lowerSearch) || matchPae;
+      });
+    }
+    if (searchPaeAtivos) {
+      const lowerPae = searchPaeAtivos.toLowerCase();
+      const cleanSearch = lowerPae.replace(/[^\d]/g, '');
+      result = result.filter(d => {
+        const paeStr = String(d['Nº PAE/SIIG'] || d['Nº PROCESSO PAE'] || d['  Nº PROCESSO PAE'] || d['Nº PAE'] || d['N° PAE'] || d['PAE'] || d['PROTOCOLO N°PAE'] || d['PROTOCOLO_PADRAO'] || '').toLowerCase();
+        if (cleanSearch) {
+           return paeStr.replace(/[^\d]/g, '').includes(cleanSearch);
+        }
+        return paeStr.includes(lowerPae);
+      });
     }
     return result;
-  }, [metrics, quickFilter, searchAtivos, filterAtivosDre, filterAtivosStatus, filterTipoFluxo]);
+  }, [metrics, quickFilter, searchAtivos, searchPaeAtivos, filterAtivosDre, filterAtivosStatus, filterTipoFluxo]);
 
   const totalPagesProcessos = Math.ceil(processosAtivosSearch.length / itemsPerPageProcessos);
   const paginatedProcessos = processosAtivosSearch.slice((pageProcessos - 1) * itemsPerPageProcessos, pageProcessos * itemsPerPageProcessos);
@@ -832,10 +854,21 @@ function App() {
     }
     if (!searchAposentados) return base;
     const lowerSearch = searchAposentados.toLowerCase();
-    return base.filter(d => 
-      String(d.SERVIDOR_PADRAO).toLowerCase().includes(lowerSearch) || 
-      String(d.MATRICULA_PADRAO).toLowerCase().includes(lowerSearch)
-    );
+    const cleanSearch = lowerSearch.replace(/[^\d]/g, '');
+    return base.filter(d => {
+      const serv = String(d.SERVIDOR_PADRAO).toLowerCase();
+      const mat = String(d.MATRICULA_PADRAO).toLowerCase();
+      const pae = String(d['Nº PAE/SIIG'] || d['Nº PROCESSO PAE'] || d['  Nº PROCESSO PAE'] || d['Nº PAE'] || d['N° PAE'] || d['PAE'] || d['PROTOCOLO N°PAE'] || d['PROTOCOLO_PADRAO'] || '').toLowerCase();
+      
+      let matchPae = false;
+      if (cleanSearch) {
+        matchPae = pae.replace(/[^\d]/g, '').includes(cleanSearch);
+      } else {
+        matchPae = pae.includes(lowerSearch);
+      }
+      
+      return serv.includes(lowerSearch) || mat.includes(lowerSearch) || matchPae;
+    });
   }, [metrics.concluidosList, searchAposentados, filterAposentadosStartYear, filterAposentadosEndYear]);
 
   const totalPagesAposentados = Math.ceil(aposentadosSearch.length / itemsPerPageAposentados);
@@ -1346,10 +1379,19 @@ function App() {
       // Aplicar filtro de texto (PAE, Nome do Servidor, Status)
       if (analyzerSearch) {
         const term = analyzerSearch.toLowerCase();
+        const cleanSearch = term.replace(/[^\d]/g, '');
         const serv = String(d.SERVIDOR_PADRAO || '').toLowerCase();
-        const pae = String(d['Nº PAE'] || '').toLowerCase();
+        const pae = String(d['Nº PAE/SIIG'] || d['Nº PROCESSO PAE'] || d['  Nº PROCESSO PAE'] || d['Nº PAE'] || d['N° PAE'] || d['PAE'] || d['PROTOCOLO N°PAE'] || d['PROTOCOLO_PADRAO'] || '').toLowerCase();
         const stat = String(d.status_consolidado || '').toLowerCase();
-        if (!serv.includes(term) && !pae.includes(term) && !stat.includes(term)) return false;
+        
+        let matchPae = false;
+        if (cleanSearch) {
+          matchPae = pae.replace(/[^\d]/g, '').includes(cleanSearch);
+        } else {
+          matchPae = pae.includes(term);
+        }
+        
+        if (!serv.includes(term) && !matchPae && !stat.includes(term)) return false;
       }
 
       // Aplicar filtro de período (usa _updated_at se houver, senão tenta o ano_publicacao)
@@ -2088,7 +2130,7 @@ function App() {
                   <div style={{display: 'flex', flexDirection: 'column', gap: '16px'}}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '20px', fontWeight: 600, opacity: 0.9 }}>
                       <FileText size={28} color="#fff" />
-                      Total de Ativos da CAPO
+                      Total de processos ativos da capo
                     </div>
                     <span style={{ fontSize: '56px', fontWeight: 700, letterSpacing: '-1.5px', lineHeight: 1 }}>{metrics.totalAtivosBruto.toLocaleString('pt-BR')}</span>
                     <span style={{ fontSize: '15px', opacity: 0.85, marginTop: '8px', lineHeight: 1.4 }}>
@@ -2415,6 +2457,23 @@ function App() {
                       placeholder="Buscar Servidor ou Matrícula..." 
                       value={searchAtivos}
                       onChange={e => { setSearchAtivos(e.target.value); setPageProcessos(1); }}
+                    />
+                  </div>
+                  
+                  <div className="search-wrapper" style={{width: 'auto'}}>
+                    <Search size={18} color="var(--text-secondary)" />
+                    <input 
+                      type="text" 
+                      className="search-input" 
+                      placeholder="Nº Processo..." 
+                      value={searchPaeAtivos}
+                      onChange={e => {
+                        let val = e.target.value.replace(/\//g, '');
+                        if (val.length > 4) val = val.substring(0, 4) + '/' + val.substring(4);
+                        setSearchPaeAtivos(val);
+                        setPageProcessos(1);
+                      }}
+                      style={{width: '130px'}}
                     />
                   </div>
                 </div>
