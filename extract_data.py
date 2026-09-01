@@ -23,6 +23,8 @@ def standardize_record(record, filename, sheet):
     # 2. MATRICULA
     matricula = r.get('MATRICULA') or r.get('MATRÍCULA') or r.get('matricula') or r.get('f') or 'N/I'
     
+    vinculo = r.get('VINCULO') or r.get('VÍNCULO') or 'N/I'
+    
     # 3. CARGO
     cargo = r.get('CARGO') or r.get('FUNÇÃO') or 'N/I'
     
@@ -66,6 +68,7 @@ def standardize_record(record, filename, sheet):
     return {
         'SERVIDOR_PADRAO': servidor,
         'MATRICULA_PADRAO': matricula,
+        'VINCULO_PADRAO': vinculo,
         'CARGO_PADRAO': cargo,
         'STATUS_PADRAO': status,
         'DATA_PUB_PADRAO': data_pub,
@@ -79,6 +82,7 @@ def standardize_record(record, filename, sheet):
 def extract():
     directory = '.'
     all_data = []
+    seen_keys = set()
     
     for filename in os.listdir(directory):
         if filename.endswith('.xlsx') and not filename.startswith('~$'):
@@ -117,9 +121,12 @@ def extract():
                         
                         # Only add if it looks like a valid record (has a Server Name)
                         if std_record['SERVIDOR_PADRAO'] != 'N/I' and not pd.isna(std_record['SERVIDOR_PADRAO']) and str(std_record['SERVIDOR_PADRAO']).upper() != 'NAN':
-                            # Combine original with std for full info, but std at top level
-                            full_record = {**record, **std_record}
-                            all_data.append(full_record)
+                            key = (str(std_record['SERVIDOR_PADRAO']).strip().upper(), str(std_record['MATRICULA_PADRAO']).strip().upper(), str(std_record['VINCULO_PADRAO']).strip().upper())
+                            if key not in seen_keys:
+                                seen_keys.add(key)
+                                # Combine original with std for full info, but std at top level
+                                full_record = {**record, **std_record}
+                                all_data.append(full_record)
             except Exception as e:
                 print(f"Erro ao processar {filename}: {e}")
 

@@ -86,6 +86,7 @@ function App() {
   const [session, setSession] = useState(null);
   const [rawData, setRawData] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
+  const [selectedSource, setSelectedSource] = useState('Planilhão'); // 'Planilhão' ou 'Dados AGA'
 
   // User Management State
   const [newUserNome, setNewUserNome] = useState('');
@@ -537,6 +538,14 @@ function App() {
 
   const filteredData = useMemo(() => {
     return data.filter(item => {
+      // Filtragem por banco de dados ("Planilhão" vs "Dados AGA")
+      const isDadosAga = item.base_origem === 'Dados AGA' || String(item.arquivo_origem || '').includes('AGUARDANDO');
+      const itemSource = isDadosAga ? 'Dados AGA' : 'Planilhão';
+      
+      if (selectedSource && selectedSource !== 'Todos' && itemSource !== selectedSource) {
+         return false;
+      }
+
       if (!isGestor) {
         const keyToUse = item._original_key || String(item['Nº PAE'] || item._row_id);
         const assigned = assignedProcesses[keyToUse];
@@ -561,7 +570,7 @@ function App() {
       
       return matchGroup && matchDate;
     });
-  }, [data, filterGroup, filterStartYear, filterEndYear, session, isGestor, assignedProcesses, matriculaAtual]);
+  }, [data, filterGroup, filterStartYear, filterEndYear, session, isGestor, assignedProcesses, matriculaAtual, selectedSource]);
 
   const metrics = useMemo(() => {
     // 1. Definição de Arquivados e Concluídos
@@ -2026,6 +2035,20 @@ function App() {
         <header className="header">
           <div className="header-title">VISÃO GERAL DE PROCESSOS - CAPO</div>
           <div className="header-actions">
+            <div className="role-toggle-container" style={{marginRight: '12px'}} title="Alternar Base de Dados">
+              <div 
+                className={`role-option ${selectedSource === 'Planilhão' ? 'active' : ''}`} 
+                onClick={() => setSelectedSource('Planilhão')}
+              >
+                Planilhão
+              </div>
+              <div 
+                className={`role-option ${selectedSource === 'Dados AGA' ? 'active' : ''}`} 
+                onClick={() => setSelectedSource('Dados AGA')}
+              >
+                Dados AGA
+              </div>
+            </div>
             {isGestor && (
               <div className="role-toggle-container" onClick={toggleViewMode} title="Alternar visão entre Gestor e Analista">
                 <div className={`role-option ${viewMode === 'gestor' ? 'active' : ''}`}>Gestor</div>
