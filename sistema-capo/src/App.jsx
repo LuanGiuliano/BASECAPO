@@ -392,7 +392,7 @@ function App() {
          return false; // Processos mais antigos que 2003 não devem aparecer no Volume Cirúrgico
       }
       const statusCheck = String(item.STATUS_PADRAO || '').toUpperCase();
-      if (statusCheck.includes('APOSENTADO')) {
+      if (statusCheck.includes('APOSENTADO') && !statusCheck.includes('APOSENTADORIA')) {
          return false; // Ignorar processos já aposentados no cálculo do passivo ativo cirúrgico
       }
       return true;
