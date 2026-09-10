@@ -1631,7 +1631,7 @@ function App() {
                       <div style={{fontWeight: 500, color: 'var(--text-primary)'}}>{proc.SERVIDOR_PADRAO}</div>
                       <div style={{fontSize: 12, color: 'var(--text-secondary)', marginTop: '4px'}}>Mat: {proc.MATRICULA_PADRAO}</div>
                     </td>
-                    <td style={{ color: 'var(--text-primary)' }}>{proc['Nº PAE']}</td>
+                    <td style={{ color: 'var(--text-primary)' }}>{proc['Nº PAE'] || proc._original_key || 'N/I'}</td>
                     <td>
                       <span className="status-badge" style={{ background: '#f5f5f7', color: 'var(--text-primary)' }}>
                         {proc.status_consolidado}
@@ -2519,7 +2519,9 @@ function App() {
                       <tr key={idx} onClick={() => handleRowClick(proc)}>
                         <td>
                           <div style={{fontWeight: 600, color: 'var(--text-primary)'}}>{proc.SERVIDOR_PADRAO}</div>
-                          <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: '4px'}}>Mat: {proc.MATRICULA_PADRAO}</div>
+                          <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: '4px'}}>
+                            Mat: {proc.MATRICULA_PADRAO} | Nº Processo: {proc['Nº PAE'] || proc._original_key || 'N/I'}
+                          </div>
                         </td>
                         <td>{proc.grupo_funcional}</td>
                         <td>
@@ -2749,7 +2751,7 @@ function App() {
                        <div className="kanban-card" key={p._row_id} onClick={() => handleRowClick(p)}>
                          <div className="kanban-card-title">{p.SERVIDOR_PADRAO}</div>
                          <div className="kanban-card-info">
-                           <span><strong>PAE:</strong> {p['Nº PAE'] || 'N/I'}</span>
+                           <span><strong>Nº Processo:</strong> {p['Nº PAE'] || p._original_key || 'N/I'}</span>
                            <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
                          </div>
                          <div className="kanban-card-actions">
@@ -2791,7 +2793,7 @@ function App() {
                        <div className="kanban-card" key={p._row_id} onClick={() => handleRowClick(p)}>
                          <div className="kanban-card-title">{p.SERVIDOR_PADRAO}</div>
                          <div className="kanban-card-info">
-                           <span><strong>PAE:</strong> {p['Nº PAE'] || 'N/I'}</span>
+                           <span><strong>Nº Processo:</strong> {p['Nº PAE'] || p._original_key || 'N/I'}</span>
                            <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
                          </div>
                           <div className="kanban-card-actions">
@@ -2846,7 +2848,7 @@ function App() {
                        <div className="kanban-card" key={p._row_id} onClick={() => handleRowClick(p)}>
                          <div className="kanban-card-title">{p.SERVIDOR_PADRAO}</div>
                          <div className="kanban-card-info">
-                           <span><strong>PAE:</strong> {p['Nº PAE'] || 'N/I'}</span>
+                           <span><strong>Nº Processo:</strong> {p['Nº PAE'] || p._original_key || 'N/I'}</span>
                            <span><strong>Grupo:</strong> {p.grupo_funcional}</span>
                          </div>
                          <div className="kanban-card-actions">
@@ -3068,7 +3070,7 @@ function App() {
                             </td>
                             <td>
                               <div style={{fontWeight: 600, color: 'var(--text-primary)'}}>{proc.SERVIDOR_PADRAO}</div>
-                              <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: '4px'}}>PAE: {proc['Nº PAE'] || 'N/I'}</div>
+                              <div style={{fontSize: 13, color: 'var(--text-secondary)', marginTop: '4px'}}>Nº Processo: {proc['Nº PAE'] || proc._original_key || 'N/I'}</div>
                             </td>
                             <td>{proc.ano_entrada}</td>
                             <td>{proc.grupo_funcional}</td>
