@@ -800,8 +800,6 @@ function App() {
 
     if (filterTipoFluxo === 'Aposentadorias') {
       result = result.filter(d => String(d.ASSUNTO_PADRAO || '').toLowerCase().includes('aposentadoria') || String(d.grupo_funcional || '').toLowerCase().includes('aposentadoria') || String(d['Nº PAE'] || '').toLowerCase().includes('aposentadoria'));
-    } else if (filterTipoFluxo === 'Fluxos Menores') {
-      result = result.filter(d => !String(d.ASSUNTO_PADRAO || '').toLowerCase().includes('aposentadoria') && !String(d.grupo_funcional || '').toLowerCase().includes('aposentadoria') && !String(d['Nº PAE'] || '').toLowerCase().includes('aposentadoria'));
     }
 
     if (filterAtivosDre !== 'Todos') {
@@ -2450,7 +2448,6 @@ function App() {
                   >
                     <option value="Todos">Todos os Fluxos</option>
                     <option value="Aposentadorias">Apenas Aposentadorias</option>
-                    <option value="Fluxos Menores">Fluxos Menores</option>
                   </select>
                   <select 
                     className="filter-select" 
